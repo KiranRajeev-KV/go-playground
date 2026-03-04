@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Distributed Log Analyzer</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        dark: {
+                            50: '#f8fafc',
+                            100: '#f1f5f9',
+                            200: '#e2e8f0',
+                            300: '#cbd5e1',
+                            400: '#94a3b8',
+                            500: '#64748b',
+                            600: '#475569',
+                            700: '#334155',
+                            800: '#1e293b',
+                            900: '#0f172a',
+                            950: '#020617',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background: linear-gradient(135deg, #0f172a 0%, #1e1e2e 50%, #0f172a 100%);
+            min-height: 100vh;
+        }
+        .glass {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+        }
+        .log-entry {
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 0.75rem;
+        }
+        .scrollbar-thin::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .scrollbar-thin::-webkit-scrollbar-track {
+            background: rgba(30, 41, 59, 0.5);
+        }
+        .scrollbar-thin::-webkit-scrollbar-thumb {
+            background: rgba(100, 116, 139, 0.5);
+            border-radius: 3px;
+        }
+        .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+            background: rgba(100, 116, 139, 0.8);
+        }
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 5px rgba(34, 211, 238, 0.3); }
+            50% { box-shadow: 0 0 20px rgba(34, 211, 238, 0.6); }
+        }
+        .glow {
+            animation: pulse-glow 2s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body class="text-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold bg-gradient-to-r from-cyan-400 to-purple-500 bg-clip-text text-transparent">
+                Distributed Log Analyzer
+            </h1>
+            <p class="text-gray-400 mt-2">Real-time MapReduce Log Analysis Dashboard</p>
+        </header>
+
+        <!-- Status Indicator -->
+        <div class="flex justify-center mb-6">
+            <div id="status" class="px-4 py-2 rounded-full text-sm font-medium bg-red-500/20 text-red-400 border border-red-500/30">
+                Disconnected
+            </div>
+        </div>
+
+        <!-- Stats Grid (Cumulative) -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <!-- Total Requests -->
+            <div class="glass rounded-xl p-5">
+                <div class="text-gray-400 text-xs uppercase tracking-wider mb-1">Total Requests</div>
+                <div class="text-3xl font-bold text-cyan-400" id="total-requests">0</div>
+            </div>
+            
+            <!-- Avg Latency -->
+            <div class="glass rounded-xl p-5">
+                <div class="text-gray-400 text-xs uppercase tracking-wider mb-1">Avg Latency</div>
+                <div class="text-3xl font-bold text-purple-400" id="avg-latency">0ms</div>
+            </div>
+            
+            <!-- Error Rate -->
+            <div class="glass rounded-xl p-5">
+                <div class="text-gray-400 text-xs uppercase tracking-wider mb-1">Error Rate</div>
+                <div class="text-3xl font-bold text-red-400" id="error-rate">0%</div>
+            </div>
+        </div>
+
+        <!-- Window Stats (2 second window) - as cards -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div class="glass rounded-xl p-4 border-l-4 border-cyan-400">
+                <div class="flex items-center gap-2 mb-2">
+                    <div class="w-2 h-2 rounded-full bg-cyan-400 glow"></div>
+                    <span class="text-gray-400 text-xs uppercase tracking-wider">Last 2s - Requests</span>
+                </div>
+                <div class="text-2xl font-bold text-cyan-400" id="window-requests">0</div>
+            </div>
+            <div class="glass rounded-xl p-4 border-l-4 border-purple-400">
+                <div class="flex items-center gap-2 mb-2">
+                    <div class="w-2 h-2 rounded-full bg-purple-400 glow"></div>
+                    <span class="text-gray-400 text-xs uppercase tracking-wider">Last 2s - Latency</span>
+                </div>
+                <div class="text-2xl font-bold text-purple-400" id="window-latency">0ms</div>
+            </div>
+            <div class="glass rounded-xl p-4 border-l-4 border-red-400">
+                <div class="flex items-center gap-2 mb-2">
+                    <div class="w-2 h-2 rounded-full bg-red-400 glow"></div>
+                    <span class="text-gray-400 text-xs uppercase tracking-wider">Last 2s - Error Rate</span>
+                </div>
+                <div class="text-2xl font-bold text-red-400" id="window-error">0%</div>
+            </div>
+        </div>
+
+        <!-- Charts Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <!-- Log Level Distribution -->
+            <div class="glass rounded-xl p-5">
+                <h2 class="text-lg font-semibold text-cyan-400 mb-4">Log Level Distribution</h2>
+                <div class="h-64">
+                    <canvas id="logLevelChart"></canvas>
+                </div>
+            </div>
+            
+            <!-- Latency Over Time -->
+            <div class="glass rounded-xl p-5">
+                <h2 class="text-lg font-semibold text-purple-400 mb-4">Latency Over Time</h2>
+                <div class="h-64">
+                    <canvas id="latencyChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Live Logs -->
+        <div class="glass rounded-xl p-5">
+            <h2 class="text-lg font-semibold text-emerald-400 mb-4">Live Logs</h2>
+            <div class="h-80 overflow-y-auto scrollbar-thin rounded-lg bg-black/30 p-3" id="logs-container">
+                <div id="logs"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Chart.js defaults
+        Chart.defaults.color = '#94a3b8';
+        Chart.defaults.borderColor = 'rgba(148, 163, 184, 0.1)';
+
+        const logLevelCtx = document.getElementById('logLevelChart').getContext('2d');
+        const latencyCtx = document.getElementById('latencyChart').getContext('2d');
+
+        const logLevelChart = new Chart(logLevelCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['INFO', 'WARN', 'ERROR'],
+                datasets: [{
+                    data: [0, 0, 0],
+                    backgroundColor: ['#10b981', '#f59e0b', '#ef4444'],
+                    borderColor: '#1e293b',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { padding: 20, usePointStyle: true }
+                    }
+                }
+            }
+        });
+
+        const latencyChart = new Chart(latencyCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Avg Latency (ms)',
+                    data: [],
+                    borderColor: '#a855f7',
+                    backgroundColor: 'rgba(168, 85, 247, 0.1)',
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 3,
+                    pointHoverRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    x: { grid: { display: false } },
+                    y: { beginAtZero: true, grid: { color: 'rgba(148, 163, 184, 0.1)' } }
+                }
+            }
+        });
+
+        const statusEl = document.getElementById('status');
+        const logsEl = document.getElementById('logs');
+        
+        const evtSource = new EventSource('/events');
+        
+        evtSource.onopen = () => {
+            statusEl.textContent = 'Connected';
+            statusEl.className = 'px-4 py-2 rounded-full text-sm font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+        };
+        
+        evtSource.onerror = () => {
+            statusEl.textContent = 'Disconnected';
+            statusEl.className = 'px-4 py-2 rounded-full text-sm font-medium bg-red-500/20 text-red-400 border border-red-500/30';
+        };
+        
+        evtSource.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                updateDashboard(data);
+            } catch (e) {
+                console.error('Failed to parse SSE data:', e);
+            }
+        };
+
+        function updateDashboard(metrics) {
+            // Cumulative stats
+            document.getElementById('total-requests').textContent = 
+                metrics.total_requests.toLocaleString();
+            document.getElementById('avg-latency').textContent = 
+                Math.round(metrics.average_latency) + 'ms';
+            document.getElementById('error-rate').textContent = 
+                metrics.error_rate.toFixed(2) + '%';
+
+            // Window stats (2 second)
+            document.getElementById('window-requests').textContent = (metrics.window_requests || 0).toLocaleString();
+            document.getElementById('window-latency').textContent = Math.round(metrics.window_avg_latency || 0) + 'ms';
+            document.getElementById('window-error').textContent = (metrics.window_error_rate || 0).toFixed(2) + '%';
+
+            const info = metrics.log_level_counts?.INFO || 0;
+            const warn = metrics.log_level_counts?.WARN || 0;
+            const error = metrics.log_level_counts?.ERROR || 0;
+            
+            logLevelChart.data.datasets[0].data = [info, warn, error];
+            logLevelChart.update('none');
+
+            if (metrics.latency_history && metrics.latency_history.length > 0) {
+                const labels = metrics.latency_history.map((_, i) => i + 1);
+                const latencies = metrics.latency_history.map(p => p.latency);
+                
+                latencyChart.data.labels = labels;
+                latencyChart.data.datasets[0].data = latencies;
+                latencyChart.update('none');
+            }
+
+            if (metrics.recent_logs && metrics.recent_logs.length > 0) {
+                updateLogs(metrics.recent_logs);
+            }
+        }
+
+        function updateLogs(logs) {
+            logsEl.innerHTML = '';
+            logs.slice().reverse().forEach(log => {
+                const el = document.createElement('div');
+                el.className = `log-entry mb-1 px-2 py-1 rounded ${
+                    log.log_level === 'ERROR' ? 'bg-red-500/10' :
+                    log.log_level === 'WARN' ? 'bg-amber-500/10' :
+                    'bg-emerald-500/10'
+                } border-l-2 ${
+                    log.log_level === 'ERROR' ? 'border-red-500' :
+                    log.log_level === 'WARN' ? 'border-amber-500' :
+                    'border-emerald-500'
+                }`;
+                
+                const time = log.timestamp ? log.timestamp.replace('T', ' ').replace('Z','') : '';
+                const statusClass = getStatusClass(log.status_code);
+                
+                el.innerHTML = `
+                    <span class="text-gray-500">${time}</span>
+                    <span class="ml-2 ${
+                        log.log_level === 'ERROR' ? 'text-red-400' :
+                        log.log_level === 'WARN' ? 'text-amber-400' :
+                        'text-emerald-400'
+                    } font-semibold">${log.log_level}</span>
+                    <span class="ml-2 text-cyan-400">${log.worker_id}</span>
+                    <span class="ml-2 text-pink-400">${log.request_id}</span>
+                    <span class="ml-2 text-purple-400">${log.component}</span>
+                    <span class="ml-2 text-sky-300">${log.client_ip}</span>
+                    <span class="ml-2 ${
+                        log.http_method === 'GET' ? 'text-emerald-400' :
+                        log.http_method === 'POST' ? 'text-cyan-400' :
+                        log.http_method === 'PUT' ? 'text-amber-400' :
+                        'text-red-400'
+                    }">${log.http_method}</span>
+                    <span class="ml-2 text-gray-300">${log.endpoint}</span>
+                    <span class="ml-2 ${statusClass}">${log.status_code}</span>
+                    <span class="ml-2 text-gray-500">${log.response_time_ms}ms</span>
+                    <span class="ml-2 text-gray-600">${log.latency}ms</span>
+                    <span class="ml-2 text-gray-500">${log.response_size}b</span>
+                    <span class="ml-2 text-gray-300">${log.message}</span>
+                `;
+                logsEl.appendChild(el);
+            });
+        }
+
+        function getStatusClass(code) {
+            if (code >= 500) return 'text-red-400 font-bold';
+            if (code >= 400) return 'text-amber-400';
+            if (code >= 300) return 'text-sky-400';
+            return 'text-emerald-400';
+        }
+    </script>
+</body>
+</html>
