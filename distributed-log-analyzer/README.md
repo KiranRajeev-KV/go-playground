@@ -2,6 +2,10 @@
 
 A distributed log analysis system in Go using MapReduce-style distributed algorithm with real-time dashboard.
 
+<img width="1880" height="1061" alt="image" src="https://github.com/user-attachments/assets/8c7a0c17-c970-41ba-b472-4c3ad7f54b24" />
+
+
+
 ## Architecture
 
 ```
