@@ -77,10 +77,11 @@
         </header>
 
         <!-- Status Indicator -->
-        <div class="flex justify-center mb-6">
+        <div class="flex justify-center items-center gap-3 mb-6">
             <div id="status" class="px-4 py-2 rounded-full text-sm font-medium bg-red-500/20 text-red-400 border border-red-500/30">
                 Disconnected
             </div>
+            <div id="timer" class="text-gray-500 text-sm font-mono">00:00:00</div>
         </div>
 
         <!-- Stats Grid (Cumulative) -->
@@ -217,18 +218,49 @@
         });
 
         const statusEl = document.getElementById('status');
+        const timerEl = document.getElementById('timer');
         const logsEl = document.getElementById('logs');
         
+        let connectedAt = null;
+        let timerInterval = null;
+
+        function formatTime(seconds) {
+            const hrs = Math.floor(seconds / 3600);
+            const mins = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+            return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function startTimer() {
+            connectedAt = Date.now();
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                const elapsed = Math.floor((Date.now() - connectedAt) / 1000);
+                timerEl.textContent = formatTime(elapsed);
+            }, 1000);
+        }
+
+        function stopTimer() {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+            connectedAt = null;
+            timerEl.textContent = '00:00:00';
+        }
+
         const evtSource = new EventSource('/events');
         
         evtSource.onopen = () => {
             statusEl.textContent = 'Connected';
             statusEl.className = 'px-4 py-2 rounded-full text-sm font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+            startTimer();
         };
         
         evtSource.onerror = () => {
             statusEl.textContent = 'Disconnected';
             statusEl.className = 'px-4 py-2 rounded-full text-sm font-medium bg-red-500/20 text-red-400 border border-red-500/30';
+            stopTimer();
         };
         
         evtSource.onmessage = (event) => {
