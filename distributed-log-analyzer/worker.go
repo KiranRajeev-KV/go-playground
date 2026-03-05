@@ -52,6 +52,14 @@ func (w *Worker) Start() error {
 	return w.Server.ListenAndServe()
 }
 
+// Stop gracefully shuts down the worker
+func (w *Worker) Stop() {
+	if w.Server != nil {
+		w.Server.Close()
+	}
+	close(w.LogQueue)
+}
+
 func getOutboundIP() string {
 	conn, err := net.Dial("udp", "8.8.8.8:80")
 	if err != nil {
