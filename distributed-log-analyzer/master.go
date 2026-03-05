@@ -74,6 +74,8 @@ func (m *Master) Stop() {
 // 3. Updates cumulative stats
 // 4. Builds response with both window and cumulative data
 func (m *Master) collectAndReduce() {
+	log.Printf("[INFO] [master] polling %d workers: %v", len(m.Workers), m.Workers)
+
 	results := make([]MapResponse, 0, len(m.Workers))
 
 	// Step 1: Poll all workers to collect their map results
@@ -82,6 +84,9 @@ func (m *Master) collectAndReduce() {
 		result := m.callWorkerMap(workerAddr)
 		if result != nil {
 			results = append(results, *result)
+			log.Printf("[INFO] [master] successfully polled worker worker=%s count=%d", workerAddr, result.ProcessedCount)
+		} else {
+			log.Printf("[ERROR] [master] failed to poll worker worker=%s", workerAddr)
 		}
 	}
 

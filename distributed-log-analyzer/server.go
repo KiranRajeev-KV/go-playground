@@ -39,7 +39,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/metrics", s.handleMetrics) // JSON metrics API
 	mux.HandleFunc("/health", s.handleHealth)   // Health check
 
-	log.Printf("Server starting on port %s", s.Port)
+	log.Printf("[INFO] [server] HTTP server started on port %s", s.Port)
 	return http.ListenAndServe(":"+s.Port, mux)
 }
 

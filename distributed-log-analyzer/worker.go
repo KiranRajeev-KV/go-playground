@@ -50,7 +50,7 @@ func (w *Worker) Start() error {
 	}
 
 	localIP := getOutboundIP()
-	log.Printf("%s started on %s:%s", w.ID, localIP, w.Port)
+	log.Printf("[INFO] [%s] %s started on %s:%s", w.ID, w.ID, localIP, w.Port)
 	return w.Server.ListenAndServe()
 }
 
@@ -79,6 +79,7 @@ func (w *Worker) startLogGenerator() {
 				// Successfully queued
 			default:
 				// Queue full - drop this log (backpressure handling)
+				log.Printf("[WARN] [%s] queue full, dropped log", w.ID)
 			}
 		}
 	}()
@@ -104,6 +105,8 @@ func (w *Worker) handleMap(wr http.ResponseWriter, req *http.Request) {
 	if batchSize <= 0 {
 		batchSize = 50
 	}
+
+	log.Printf("[INFO] [%s] received map request batch_size=%d", w.ID, batchSize)
 
 	// Dequeue logs from queue (non-blocking)
 	logEntries := w.dequeueBatch(batchSize)

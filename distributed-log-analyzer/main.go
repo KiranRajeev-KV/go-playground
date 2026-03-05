@@ -40,7 +40,8 @@ func runMasterServer(port string, workers []string) {
 
 	master.StartCoordinator()
 
-	log.Printf("master started on %s:%s", localIP, port)
+	log.Printf("[INFO] [master] master started on %s:%s", localIP, port)
+	log.Printf("[INFO] [master] configured with %d workers: %v", len(workers), workers)
 	if err := server.Start(); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}
@@ -61,7 +62,8 @@ func runAll(workers []string, masterPort string) {
 	master.StartCoordinator()
 	server.StartSSEBroadcaster()
 
-	log.Printf("master started on %s:%s", localIP, masterPort)
+	log.Printf("[INFO] [master] master started on %s:%s", localIP, masterPort)
+	log.Printf("[INFO] [master] configured with %d workers: %v", len(workers), workers)
 
 	go func() {
 		if err := server.Start(); err != nil {
