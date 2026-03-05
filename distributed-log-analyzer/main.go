@@ -4,7 +4,10 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -41,15 +44,28 @@ func runMasterServer(port string, workers []string) {
 
 	log.Printf("[INFO] [master] master started on %s:%s", localIP, port)
 	log.Printf("[INFO] [master] configured with %d workers: %v", len(workers), workers)
+
+	// Set up signal handling for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		<-sigChan
+		log.Printf("[INFO] [master] shutting down...")
+		master.Stop()
+		server.Stop()
+		os.Exit(0)
+	}()
+
 	if err := server.Start(); err != nil {
-		log.Fatalf("Server error: %v", err)
+		log.Fatalf("[FATAL] [main] server error: %v", err)
 	}
 }
 
 func runWorker(id, port string) {
 	worker := NewWorker(id, port, 1000)
 	if err := worker.Start(); err != nil {
-		log.Fatalf("Worker error: %v", err)
+		log.Fatalf("[FATAL] [main] worker error: %v", err)
 	}
 }
 
@@ -64,9 +80,21 @@ func runAll(workers []string, masterPort string) {
 	log.Printf("[INFO] [master] master started on %s:%s", localIP, masterPort)
 	log.Printf("[INFO] [master] configured with %d workers: %v", len(workers), workers)
 
+	// Set up signal handling for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		<-sigChan
+		log.Printf("[INFO] [master] shutting down...")
+		master.Stop()
+		server.Stop()
+		os.Exit(0)
+	}()
+
 	go func() {
 		if err := server.Start(); err != nil {
-			log.Fatalf("Server error: %v", err)
+			log.Fatalf("[FATAL] [main] server error: %v", err)
 		}
 	}()
 

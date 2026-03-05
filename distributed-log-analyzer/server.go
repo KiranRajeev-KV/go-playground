@@ -69,7 +69,7 @@ func (s *Server) broadcastMetrics() {
 	metrics := s.Master.GetMetrics()
 	data, err := metrics.ToJSON()
 	if err != nil {
-		log.Printf("Failed to marshal metrics: %v", err)
+		log.Printf("[ERROR] [server] failed to marshal metrics error=%v", err)
 		return
 	}
 
