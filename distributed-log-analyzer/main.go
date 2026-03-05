@@ -21,7 +21,7 @@ func main() {
 
 	switch *mode {
 	case "master":
-		runMasterServer(*masterPort)
+		runMasterServer(*masterPort, workers)
 	case "worker":
 		runWorker(*workerID, *workerPort, *masterAddr)
 	case "all":
@@ -33,9 +33,9 @@ func main() {
 	}
 }
 
-func runMasterServer(port string) {
+func runMasterServer(port string, workers []string) {
 	localIP := getOutboundIP()
-	master := NewMaster(port, []string{})
+	master := NewMaster(port, workers)
 	server := NewServer(port, master)
 
 	master.StartCoordinator()
