@@ -182,7 +182,7 @@ func (m *Master) collectAndReduce() {
 // callWorkerMap makes an RPC call to a worker to get their map results
 // This is the "Map" phase communication - master pulls from workers
 func (m *Master) callWorkerMap(workerAddr string) *MapResponse {
-	url := fmt.Sprintf("http://localhost:%s/map", workerAddr)
+	url := fmt.Sprintf("http://%s/map", workerAddr)
 
 	// Request batch of 50 logs from worker
 	reqBody, _ := json.Marshal(MapRequest{BatchSize: 50})

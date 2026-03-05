@@ -122,12 +122,82 @@ Start individual worker:
 ./distributed-log-analyzer -mode=worker -worker-id=worker1 -worker-port=9091
 ```
 
-## Viewing Dashboard
+### Finding Your IP Address
+
+To run across multiple machines, you'll need to know each laptop's IP address:
+
+**Linux:**
+```bash
+hostname -I
+```
+
+**macOS:**
+```bash
+ifconfig | grep inet
+```
+
+**Windows:**
+```bash
+ipconfig
+```
+
+Look for an IP address starting with `192.168.` or `10.` (your local network IP).
+
+### Running Distributed Across Multiple Machines
+
+To run the system across multiple laptops on the same network:
+
+**On the Master laptop** (e.g., IP `192.168.1.100`):
+```bash
+./distributed-log-analyzer -mode=master -master-port=9090 -worker-addrs=192.168.1.101:9091,192.168.1.102:9091,192.168.1.103:9091
+```
+
+This starts the master coordinator and HTTP/SSE server. The `-worker-addrs` flag specifies the IP:port of each worker laptop.
+
+**On each Worker laptop:**
+
+Worker 1 (192.168.1.101):
+```bash
+./distributed-log-analyzer -mode=worker -worker-id=worker1 -worker-port=9091 -master-addr=192.168.1.100:9090
+```
+
+Worker 2 (192.168.1.102):
+```bash
+./distributed-log-analyzer -mode=worker -worker-id=worker2 -worker-port=9091 -master-addr=192.168.1.100:9090
+```
+
+Worker 3 (192.168.1.103):
+```bash
+./distributed-log-analyzer -mode=worker -worker-id=worker3 -worker-port=9091 -master-addr=192.168.1.100:9090
+```
+
+#### Command-Line Flags
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-mode` | Mode: `master`, `worker`, `all`, or `start-workers` | `all` |
+| `-master-port` | Port for master/server | `9090` |
+| `-master-addr` | Master address for workers (ip:port) | `localhost:9090` |
+| `-worker-id` | Worker identifier | `worker1` |
+| `-worker-port` | Worker HTTP port | `9091` |
+| `-worker-addrs` | Comma-separated worker addresses for master (ip:port) | `localhost:9091,localhost:9092,localhost:9093` |
+
+#### Startup Messages
+
+On startup, you'll see messages like:
+- Master: `master started on 192.168.1.100:9090`
+- Worker: `worker1 started on 192.168.1.101:9091`
+
+#### Viewing Dashboard
 
 Open your browser and navigate to:
 
 ```
+# Local testing
 http://localhost:9090
+
+# Multi-machine: replace with master's IP
+http://192.168.1.100:9090
 ```
 
 ### Dashboard Features

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"log"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -13,6 +14,7 @@ import (
 type Worker struct {
 	ID           string
 	Port         string
+	MasterAddr   string
 	LogQueue     chan LogEntry // Buffered channel - acts as the log buffer
 	QueueSize    int           // Capacity of the log queue
 	Server       *http.Server  // HTTP server for this worker
@@ -22,12 +24,13 @@ type Worker struct {
 
 // NewWorker creates a new worker with a buffered channel queue
 // queueSize determines how many logs can be buffered before dropping
-func NewWorker(id string, port string, queueSize int) *Worker {
+func NewWorker(id string, port string, masterAddr string, queueSize int) *Worker {
 	return &Worker{
-		ID:        id,
-		Port:      port,
-		LogQueue:  make(chan LogEntry, queueSize),
-		QueueSize: queueSize,
+		ID:         id,
+		Port:       port,
+		MasterAddr: masterAddr,
+		LogQueue:   make(chan LogEntry, queueSize),
+		QueueSize:  queueSize,
 	}
 }
 
@@ -46,8 +49,19 @@ func (w *Worker) Start() error {
 		Handler: mux,
 	}
 
-	log.Printf("Worker %s starting on port %s", w.ID, w.Port)
+	localIP := getOutboundIP()
+	log.Printf("%s started on %s:%s", w.ID, localIP, w.Port)
 	return w.Server.ListenAndServe()
+}
+
+func getOutboundIP() string {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		return "127.0.0.1"
+	}
+	defer conn.Close()
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+	return localAddr.IP.String()
 }
 
 // startLogGenerator runs continuously in a goroutine

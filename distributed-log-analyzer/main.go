@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 )
 
@@ -12,15 +13,17 @@ func main() {
 	workerID := flag.String("worker-id", "worker1", "Worker ID (for worker mode)")
 	workerPort := flag.String("worker-port", "9091", "Worker port (for worker mode)")
 	masterPort := flag.String("master-port", "9090", "Master port (for master/server mode)")
+	masterAddr := flag.String("master-addr", "localhost:9090", "Master address (for worker mode, format: ip:port)")
+	workerAddrs := flag.String("worker-addrs", "localhost:9091,localhost:9092,localhost:9093", "Worker addresses for master (comma-separated, format: ip:port)")
 	flag.Parse()
 
-	workers := []string{"9091", "9092", "9093"}
+	workers := strings.Split(*workerAddrs, ",")
 
 	switch *mode {
 	case "master":
 		runMasterServer(*masterPort)
 	case "worker":
-		runWorker(*workerID, *workerPort)
+		runWorker(*workerID, *workerPort, *masterAddr)
 	case "all":
 		runAll(workers, *masterPort)
 	case "start-workers":
@@ -31,34 +34,36 @@ func main() {
 }
 
 func runMasterServer(port string) {
+	localIP := getOutboundIP()
 	master := NewMaster(port, []string{})
 	server := NewServer(port, master)
 
 	master.StartCoordinator()
 
-	log.Printf("Starting master server on port %s", port)
+	log.Printf("master started on %s:%s", localIP, port)
 	if err := server.Start(); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}
 }
 
-func runWorker(id, port string) {
-	worker := NewWorker(id, port, 1000)
-	log.Printf("Starting worker %s on port %s", id, port)
+func runWorker(id, port, masterAddress string) {
+	worker := NewWorker(id, port, masterAddress, 1000)
 	if err := worker.Start(); err != nil {
 		log.Fatalf("Worker error: %v", err)
 	}
 }
 
 func runAll(workers []string, masterPort string) {
+	localIP := getOutboundIP()
 	master := NewMaster(masterPort, workers)
 	server := NewServer(masterPort, master)
 
 	master.StartCoordinator()
 	server.StartSSEBroadcaster()
 
+	log.Printf("master started on %s:%s", localIP, masterPort)
+
 	go func() {
-		log.Printf("Starting server on port %s", masterPort)
 		if err := server.Start(); err != nil {
 			log.Fatalf("Server error: %v", err)
 		}
@@ -71,15 +76,15 @@ func runAll(workers []string, masterPort string) {
 
 func startAllWorkers(workers []string) {
 	workerIDs := []string{"worker1", "worker2", "worker3"}
+	masterAddr := "localhost:9090"
 
-	for i, port := range workers {
-		go func(id, p string) {
-			worker := NewWorker(id, p, 1000)
-			log.Printf("Starting worker %s on port %s", id, p)
+	for i, addr := range workers {
+		go func(id, a string) {
+			worker := NewWorker(id, strings.Split(a, ":")[1], masterAddr, 1000)
 			if err := worker.Start(); err != nil {
 				log.Printf("Worker error: %v", err)
 			}
-		}(workerIDs[i], port)
+		}(workerIDs[i], addr)
 	}
 
 	time.Sleep(500 * time.Millisecond)
