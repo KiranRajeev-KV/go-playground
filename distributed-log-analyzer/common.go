@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"sort"
 	"time"
 )
 
@@ -110,11 +111,9 @@ var (
 // GenerateLogEntry creates a realistic mock log entry
 // Status codes are weighted to simulate real traffic (mostly 200s, some errors)
 func GenerateLogEntry(workerID string) LogEntry {
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-
 	// Weighted status codes: mostly success (200), some redirects (3xx), some errors (4xx, 5xx)
 	statusCodes := []int{200, 200, 200, 200, 201, 204, 301, 400, 401, 403, 404, 500, 503}
-	statusCode := statusCodes[r.Intn(len(statusCodes))]
+	statusCode := statusCodes[rand.Intn(len(statusCodes))]
 
 	// Derive log level from status code
 	logLevel := "INFO"
@@ -122,45 +121,45 @@ func GenerateLogEntry(workerID string) LogEntry {
 		logLevel = "WARN"
 	} else if statusCode >= 500 {
 		logLevel = "ERROR"
-	} else if r.Float32() < 0.05 { // 5% chance of WARN for successful requests
+	} else if rand.Float32() < 0.05 { // 5% chance of WARN for successful requests
 		logLevel = "WARN"
 	}
 
 	// Random but realistic values
-	responseTime := r.Intn(500) + 10    // 10-510ms
-	latency := r.Intn(responseTime)     // Latency < response time
-	responseSize := r.Intn(10000) + 100 // 100-10100 bytes
+	responseTime := rand.Intn(500) + 10    // 10-510ms
+	latency := rand.Intn(responseTime)     // Latency < response time
+	responseSize := rand.Intn(10000) + 100 // 100-10100 bytes
 
 	return LogEntry{
 		Timestamp:    time.Now().UTC().Format(time.RFC3339),
 		WorkerID:     workerID,
-		RequestID:    generateRequestID(r),
-		Component:    components[r.Intn(len(components))],
-		ClientIP:     generateClientIP(r),
-		HTTPMethod:   methods[r.Intn(len(methods))],
-		Endpoint:     endpoints[r.Intn(len(endpoints))],
+		RequestID:    generateRequestID(),
+		Component:    components[rand.Intn(len(components))],
+		ClientIP:     generateClientIP(),
+		HTTPMethod:   methods[rand.Intn(len(methods))],
+		Endpoint:     endpoints[rand.Intn(len(endpoints))],
 		StatusCode:   statusCode,
 		ResponseTime: responseTime,
 		Latency:      latency,
 		ResponseSize: responseSize,
-		Message:      messages[r.Intn(len(messages))],
+		Message:      messages[rand.Intn(len(messages))],
 		LogLevel:     logLevel,
 	}
 }
 
 // generateRequestID creates a random 8-character hex ID
-func generateRequestID(r *rand.Rand) string {
+func generateRequestID() string {
 	const charset = "abcdef0123456789"
 	id := make([]byte, 8)
 	for i := range id {
-		id[i] = charset[r.Intn(len(charset))]
+		id[i] = charset[rand.Intn(len(charset))]
 	}
 	return string(id)
 }
 
 // generateClientIP creates a mock 192.168.x.x IP address
-func generateClientIP(r *rand.Rand) string {
-	return fmt.Sprintf("192.168.%d.%d", r.Intn(256), r.Intn(256))
+func generateClientIP() string {
+	return fmt.Sprintf("192.168.%d.%d", rand.Intn(256), rand.Intn(256))
 }
 
 // =============================================================================
@@ -223,6 +222,23 @@ func getLatencyBucket(latency int) string {
 // REDUCE PHASE - Executed on Master
 // =============================================================================
 
+// getTopEndpoints returns the top N endpoints sorted by count (descending)
+func getTopEndpoints(endpointCounts map[string]int, n int) []EndpointCount {
+	endpoints := make([]EndpointCount, 0, len(endpointCounts))
+	for endpoint, count := range endpointCounts {
+		endpoints = append(endpoints, EndpointCount{Endpoint: endpoint, Count: count})
+	}
+
+	sort.Slice(endpoints, func(i, j int) bool {
+		return endpoints[i].Count > endpoints[j].Count
+	})
+
+	if len(endpoints) > n {
+		endpoints = endpoints[:n]
+	}
+	return endpoints
+}
+
 // Reduce aggregates intermediate results from all workers
 // Input: array of MapResponse from each worker
 // Output: AggregatedMetrics with combined totals for this polling window
@@ -276,22 +292,7 @@ func Reduce(results []MapResponse) AggregatedMetrics {
 	}
 
 	// Find top 5 endpoints by request count
-	var topEndpoints []EndpointCount
-	for endpoint, count := range metrics.EndpointCounts {
-		topEndpoints = append(topEndpoints, EndpointCount{Endpoint: endpoint, Count: count})
-	}
-	// Simple bubble sort for small dataset
-	for i := 0; i < len(topEndpoints)-1; i++ {
-		for j := i + 1; j < len(topEndpoints); j++ {
-			if topEndpoints[j].Count > topEndpoints[i].Count {
-				topEndpoints[i], topEndpoints[j] = topEndpoints[j], topEndpoints[i]
-			}
-		}
-	}
-	if len(topEndpoints) > 5 {
-		topEndpoints = topEndpoints[:5]
-	}
-	metrics.TopEndpoints = topEndpoints
+	metrics.TopEndpoints = getTopEndpoints(metrics.EndpointCounts, 5)
 
 	return metrics
 }

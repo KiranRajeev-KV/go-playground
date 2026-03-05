@@ -139,22 +139,8 @@ func (m *Master) collectAndReduce() {
 	cumulativeAvgLatency := float64(m.CumulativeTotalLatency) / float64(m.CumulativeTotalRequests)
 	cumulativeErrorRate := float64(m.CumulativeErrorCount) / float64(m.CumulativeTotalRequests) * 100
 
-	// Step 7: Calculate top 5 endpoints by count (bubble sort)
-	var topEndpoints []EndpointCount
-	for endpoint, count := range m.CumulativeEndpointCounts {
-		topEndpoints = append(topEndpoints, EndpointCount{Endpoint: endpoint, Count: count})
-	}
-	// Simple bubble sort for small dataset
-	for i := 0; i < len(topEndpoints)-1; i++ {
-		for j := i + 1; j < len(topEndpoints); j++ {
-			if topEndpoints[j].Count > topEndpoints[i].Count {
-				topEndpoints[i], topEndpoints[j] = topEndpoints[j], topEndpoints[i]
-			}
-		}
-	}
-	if len(topEndpoints) > 5 {
-		topEndpoints = topEndpoints[:5]
-	}
+	// Step 7: Calculate top 5 endpoints by count
+	topEndpoints := getTopEndpoints(m.CumulativeEndpointCounts, 5)
 
 	// Step 8: Build final metrics response
 	// Include both cumulative totals AND window-specific stats
@@ -191,7 +177,7 @@ func (m *Master) callWorkerMap(workerAddr string) *MapResponse {
 	reqBody, _ := json.Marshal(MapRequest{BatchSize: 50})
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(reqBody))
 	if err != nil {
-		log.Printf("Failed to create request for worker %s: %v", workerAddr, err)
+		log.Printf("[ERROR] [master] failed to create request for worker=%s error=%v", workerAddr, err)
 		return nil
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -199,19 +185,19 @@ func (m *Master) callWorkerMap(workerAddr string) *MapResponse {
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("Failed to call worker %s: %v", workerAddr, err)
+		log.Printf("[ERROR] [master] failed to call worker=%s error=%v", workerAddr, err)
 		return nil
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("Worker %s returned status %d", workerAddr, resp.StatusCode)
+		log.Printf("[ERROR] [master] worker=%s returned status=%d", workerAddr, resp.StatusCode)
 		return nil
 	}
 
 	var result MapResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		log.Printf("Failed to decode response from worker %s: %v", workerAddr, err)
+		log.Printf("[ERROR] [master] failed to decode response from worker=%s error=%v", workerAddr, err)
 		return nil
 	}
 
