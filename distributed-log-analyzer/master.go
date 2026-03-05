@@ -14,7 +14,6 @@ import (
 // It polls workers for log data, performs reduce aggregation,
 // and serves metrics via SSE to connected clients
 type Master struct {
-	Port      string
 	Workers   []string
 	Metrics   *AggregatedMetrics
 	MetricsMu sync.RWMutex
@@ -35,9 +34,8 @@ type Master struct {
 	StopChan chan struct{}
 }
 
-func NewMaster(port string, workers []string) *Master {
+func NewMaster(workers []string) *Master {
 	return &Master{
-		Port:                       port,
 		Workers:                    workers,
 		Metrics:                    &AggregatedMetrics{},
 		CumulativeLogLevelCounts:   make(map[string]int),

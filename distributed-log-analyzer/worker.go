@@ -14,7 +14,6 @@ import (
 type Worker struct {
 	ID           string
 	Port         string
-	MasterAddr   string
 	LogQueue     chan LogEntry // Buffered channel - acts as the log buffer
 	QueueSize    int           // Capacity of the log queue
 	Server       *http.Server  // HTTP server for this worker
@@ -24,13 +23,12 @@ type Worker struct {
 
 // NewWorker creates a new worker with a buffered channel queue
 // queueSize determines how many logs can be buffered before dropping
-func NewWorker(id string, port string, masterAddr string, queueSize int) *Worker {
+func NewWorker(id string, port string, queueSize int) *Worker {
 	return &Worker{
-		ID:         id,
-		Port:       port,
-		MasterAddr: masterAddr,
-		LogQueue:   make(chan LogEntry, queueSize),
-		QueueSize:  queueSize,
+		ID:        id,
+		Port:      port,
+		LogQueue:  make(chan LogEntry, queueSize),
+		QueueSize: queueSize,
 	}
 }
 

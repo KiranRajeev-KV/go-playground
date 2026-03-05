@@ -13,7 +13,6 @@ func main() {
 	workerID := flag.String("worker-id", "worker1", "Worker ID (for worker mode)")
 	workerPort := flag.String("worker-port", "9091", "Worker port (for worker mode)")
 	masterPort := flag.String("master-port", "9090", "Master port (for master/server mode)")
-	masterAddr := flag.String("master-addr", "localhost:9090", "Master address (for worker mode, format: ip:port)")
 	workerAddrs := flag.String("worker-addrs", "localhost:9091,localhost:9092,localhost:9093", "Worker addresses for master (comma-separated, format: ip:port)")
 	flag.Parse()
 
@@ -23,7 +22,7 @@ func main() {
 	case "master":
 		runMasterServer(*masterPort, workers)
 	case "worker":
-		runWorker(*workerID, *workerPort, *masterAddr)
+		runWorker(*workerID, *workerPort)
 	case "all":
 		runAll(workers, *masterPort)
 	case "start-workers":
@@ -35,7 +34,7 @@ func main() {
 
 func runMasterServer(port string, workers []string) {
 	localIP := getOutboundIP()
-	master := NewMaster(port, workers)
+	master := NewMaster(workers)
 	server := NewServer(port, master)
 
 	master.StartCoordinator()
@@ -47,8 +46,8 @@ func runMasterServer(port string, workers []string) {
 	}
 }
 
-func runWorker(id, port, masterAddress string) {
-	worker := NewWorker(id, port, masterAddress, 1000)
+func runWorker(id, port string) {
+	worker := NewWorker(id, port, 1000)
 	if err := worker.Start(); err != nil {
 		log.Fatalf("Worker error: %v", err)
 	}
@@ -56,7 +55,7 @@ func runWorker(id, port, masterAddress string) {
 
 func runAll(workers []string, masterPort string) {
 	localIP := getOutboundIP()
-	master := NewMaster(masterPort, workers)
+	master := NewMaster(workers)
 	server := NewServer(masterPort, master)
 
 	master.StartCoordinator()
@@ -78,13 +77,12 @@ func runAll(workers []string, masterPort string) {
 
 func startAllWorkers(workers []string) {
 	workerIDs := []string{"worker1", "worker2", "worker3"}
-	masterAddr := "localhost:9090"
 
 	for i, addr := range workers {
 		go func(id, a string) {
-			worker := NewWorker(id, strings.Split(a, ":")[1], masterAddr, 1000)
+			worker := NewWorker(id, strings.Split(a, ":")[1], 1000)
 			if err := worker.Start(); err != nil {
-				log.Printf("Worker error: %v", err)
+				log.Printf("[ERROR] [main] worker error: %v", err)
 			}
 		}(workerIDs[i], addr)
 	}
