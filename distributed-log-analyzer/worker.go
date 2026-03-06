@@ -82,9 +82,7 @@ func (w *Worker) startLogGenerator() {
 			entry := GenerateLogEntry(w.ID)
 			select {
 			case w.LogQueue <- entry:
-				// Successfully queued
 			default:
-				// Queue full - drop this log (backpressure handling)
 				log.Printf("[WARN] [%s] queue full, dropped log", w.ID)
 			}
 		}
@@ -167,7 +165,6 @@ func (w *Worker) dequeueBatch(batchSize int) []LogEntry {
 		case entry := <-w.LogQueue:
 			logEntries = append(logEntries, entry)
 		default:
-			// No more logs available - exit early
 			break
 		}
 	}
