@@ -158,17 +158,17 @@ This starts the master coordinator and HTTP/SSE server. The `-worker-addrs` flag
 
 Worker 1 (192.168.1.101):
 ```bash
-./distributed-log-analyzer -mode=worker -worker-id=worker1 -worker-port=9091 -master-addr=192.168.1.100:9090
+./distributed-log-analyzer -mode=worker -worker-id=worker1 -worker-port=9091
 ```
 
 Worker 2 (192.168.1.102):
 ```bash
-./distributed-log-analyzer -mode=worker -worker-id=worker2 -worker-port=9091 -master-addr=192.168.1.100:9090
+./distributed-log-analyzer -mode=worker -worker-id=worker2 -worker-port=9091
 ```
 
 Worker 3 (192.168.1.103):
 ```bash
-./distributed-log-analyzer -mode=worker -worker-id=worker3 -worker-port=9091 -master-addr=192.168.1.100:9090
+./distributed-log-analyzer -mode=worker -worker-id=worker3 -worker-port=9091
 ```
 
 #### Command-Line Flags
@@ -177,7 +177,6 @@ Worker 3 (192.168.1.103):
 |------|-------------|---------|
 | `-mode` | Mode: `master`, `worker`, `all`, or `start-workers` | `all` |
 | `-master-port` | Port for master/server | `9090` |
-| `-master-addr` | Master address for workers (ip:port) | `localhost:9090` |
 | `-worker-id` | Worker identifier | `worker1` |
 | `-worker-port` | Worker HTTP port | `9091` |
 | `-worker-addrs` | Comma-separated worker addresses for master (ip:port) | `localhost:9091,localhost:9092,localhost:9093` |
