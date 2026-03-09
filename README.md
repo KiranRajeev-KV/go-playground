@@ -11,6 +11,7 @@ Each subdirectory is an independent project with its own `go.mod`.
 ## Projects
 
 - [distributed-log-analyzer](./distributed-log-analyzer/README.md) - Distributed log analysis with MapReduce and real-time dashboard
+- [lamport-vector-clocks](./lamport-vector-clocks/README.md) - Lamport and Vector clock implementations
 
 ## Adding New Projects
 

@@ -75,7 +75,7 @@ func getOutboundIP() string {
 // Uses non-blocking send (select with default) to prevent blocking if queue is full
 func (w *Worker) startLogGenerator() {
 	go func() {
-		ticker := time.NewTicker(100 * time.Millisecond)
+		ticker := time.NewTicker(40 * time.Millisecond)
 		defer ticker.Stop()
 
 		for range ticker.C {
