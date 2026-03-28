@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.1
 // - protoc             v6.33.1
-// source: transaction.proto
+// source: proto/transaction.proto
 
 package pb
 
@@ -156,7 +156,7 @@ var TransactionCoordinator_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "transaction.proto",
+	Metadata: "proto/transaction.proto",
 }
 
 const (
@@ -489,5 +489,5 @@ var TransactionParticipant_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "transaction.proto",
+	Metadata: "proto/transaction.proto",
 }

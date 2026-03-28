@@ -24,6 +24,10 @@ const (
 	StateCommitting CoordinatorState = "COMMITTING"
 	StateCommitted  CoordinatorState = "COMMITTED"
 	StateAborted    CoordinatorState = "ABORTED"
+	// 3PC states
+	StateCanCommitting CoordinatorState = "CAN_COMMITTING"
+	StatePreCommitting CoordinatorState = "PRE_COMMITTING"
+	StateDoCommitting  CoordinatorState = "DO_COMMITTING"
 )
 
 var ErrInvalidStateTransition = errors.New("invalid state transition")
@@ -106,7 +110,7 @@ func (t *CoordinatorTransaction) GetState() CoordinatorState {
 	return t.State
 }
 
-// CoordinatorService manages the 2PC protocol execution.
+// CoordinatorService manages the 2PC/3PC protocol execution.
 type CoordinatorService struct {
 	pb.UnimplementedTransactionCoordinatorServer
 	db                 *db.DB
@@ -114,18 +118,20 @@ type CoordinatorService struct {
 	participantClients map[string]pb.TransactionParticipantClient
 	EnableRecovery     bool
 	CommitTimeout      time.Duration
+	Protocol           string
 
 	Participants []string
 }
 
 // NewCoordinatorService creates a new coordinator service.
-func NewCoordinatorService(database *db.DB, clients map[string]pb.TransactionParticipantClient, recover bool, commitTimeout time.Duration) *CoordinatorService {
+func NewCoordinatorService(database *db.DB, clients map[string]pb.TransactionParticipantClient, recover bool, commitTimeout time.Duration, protocol string) *CoordinatorService {
 	return &CoordinatorService{
 		db:                 database,
 		store:              NewTransactionStore(),
 		participantClients: clients,
 		EnableRecovery:     recover,
 		CommitTimeout:      commitTimeout,
+		Protocol:           protocol,
 		Participants:       []string{"inventory", "payment"},
 	}
 }
@@ -375,4 +381,174 @@ func (s *CoordinatorService) queryParticipantStates(ctx context.Context, transac
 	}
 
 	return states, nil
+}
+
+// CanCommitResult holds the result from a participant's canCommit phase.
+type CanCommitResult struct {
+	Participant string
+	CanCommit   bool
+	Reason      string
+}
+
+// ExecuteThreePhaseCommit runs the full 3PC protocol for a transaction.
+func (s *CoordinatorService) ExecuteThreePhaseCommit(ctx context.Context, tx *CoordinatorTransaction) (CoordinatorState, error) {
+	fmt.Printf("[Coordinator] Starting 3PC for transaction %s\n", tx.TransactionID)
+
+	// Phase 1: CanCommit
+	s.store.UpdateState(tx.TransactionID, StateCanCommitting)
+	results, err := s.sendCanCommitToAll(ctx, tx)
+	if err != nil {
+		fmt.Printf("[Coordinator] CanCommit failed with error: %v\n", err)
+		s.store.UpdateState(tx.TransactionID, StateAborted)
+		s.sendAbortToAll(tx.TransactionID)
+		return StateAborted, err
+	}
+
+	fmt.Printf("[Coordinator] CanCommit results: %+v\n", results)
+
+	for _, result := range results {
+		tx.Votes = append(tx.Votes, ParticipantVote{Participant: result.Participant, VoteYes: result.CanCommit, Reason: result.Reason})
+	}
+
+	for _, result := range results {
+		if !result.CanCommit {
+			fmt.Printf("[Coordinator] Cannot commit from %s: %s\n", result.Participant, result.Reason)
+			s.store.UpdateState(tx.TransactionID, StateAborted)
+			s.sendAbortToAll(tx.TransactionID)
+			return StateAborted, nil
+		}
+	}
+
+	// Phase 2: PreCommit
+	s.store.UpdateState(tx.TransactionID, StatePreCommitting)
+	fmt.Printf("[Coordinator] Sending preCommit to all participants\n")
+	err = s.sendPreCommitToAll(ctx, tx.TransactionID)
+	if err != nil {
+		fmt.Printf("[Coordinator] PreCommit failed with error: %v\n", err)
+		s.store.UpdateState(tx.TransactionID, StateAborted)
+		s.sendAbortToAll(tx.TransactionID)
+		return StateAborted, err
+	}
+
+	// Phase 3: DoCommit
+	s.store.UpdateState(tx.TransactionID, StateDoCommitting)
+	fmt.Printf("[Coordinator] Sending doCommit to all participants\n")
+	err = s.sendDoCommitToAll(ctx, tx.TransactionID)
+	if err != nil {
+		// BUG FIX 2: Don't abort - system will converge via recovery
+		fmt.Printf("[Coordinator] DoCommit failed but returning committed: %v\n", err)
+		s.store.UpdateState(tx.TransactionID, StateCommitted)
+		return StateCommitted, nil
+	}
+
+	s.store.UpdateState(tx.TransactionID, StateCommitted)
+	return StateCommitted, nil
+}
+
+// sendCanCommitToAll sends CanCommit requests to all participants in parallel.
+func (s *CoordinatorService) sendCanCommitToAll(ctx context.Context, tx *CoordinatorTransaction) ([]CanCommitResult, error) {
+	g, ctx := errgroup.WithContext(ctx)
+	results := make([]CanCommitResult, len(s.Participants))
+
+	for i, participant := range s.Participants {
+		g.Go(func() error {
+			result, err := s.sendCanCommit(ctx, participant, tx)
+			if err != nil {
+				results[i] = CanCommitResult{Participant: participant, CanCommit: false, Reason: err.Error()}
+				return err
+			}
+			results[i] = result
+			return nil
+		})
+	}
+
+	err := g.Wait()
+	return results, err
+}
+
+// sendCanCommit sends a CanCommit request to a specific participant.
+func (s *CoordinatorService) sendCanCommit(ctx context.Context, participant string, tx *CoordinatorTransaction) (CanCommitResult, error) {
+	fmt.Printf("[Coordinator] Sending canCommit to %s\n", participant)
+	client, ok := s.participantClients[participant]
+	if !ok {
+		return CanCommitResult{Participant: participant, CanCommit: false, Reason: "no client"}, errors.New("no client for participant")
+	}
+
+	messageID := fmt.Sprintf("%s-%s-cancheck", tx.TransactionID, participant)
+	ctx = middleware.WithMessageID(ctx, messageID)
+
+	var req *pb.CanCommitRequest
+	switch participant {
+	case "inventory":
+		req = &pb.CanCommitRequest{
+			TransactionId: tx.TransactionID,
+			Payload: &pb.CanCommitRequest_Inventory{
+				Inventory: &pb.InventoryPayload{
+					ItemId:   tx.OrderDetails.ItemID,
+					Quantity: tx.OrderDetails.Quantity,
+				},
+			},
+		}
+	case "payment":
+		req = &pb.CanCommitRequest{
+			TransactionId: tx.TransactionID,
+			Payload: &pb.CanCommitRequest_Payment{
+				Payment: &pb.PaymentPayload{
+					UserId: tx.OrderDetails.UserID,
+					Amount: tx.OrderDetails.Amount,
+				},
+			},
+		}
+	}
+
+	resp, err := client.CanCommit(ctx, req)
+	if err != nil {
+		return CanCommitResult{Participant: participant, CanCommit: false, Reason: err.Error()}, err
+	}
+
+	return CanCommitResult{
+		Participant: participant,
+		CanCommit:   resp.CanCommit,
+		Reason:      resp.Reason,
+	}, nil
+}
+
+// sendPreCommitToAll sends PreCommit requests to all participants in parallel.
+func (s *CoordinatorService) sendPreCommitToAll(ctx context.Context, transactionID string) error {
+	g, ctx := errgroup.WithContext(ctx)
+
+	for _, participant := range s.Participants {
+		g.Go(func() error {
+			client, ok := s.participantClients[participant]
+			if !ok {
+				return errors.New("no client for participant")
+			}
+			messageID := fmt.Sprintf("%s-%s-precommit", transactionID, participant)
+			reqCtx := middleware.WithMessageID(ctx, messageID)
+			_, err := client.PreCommit(reqCtx, &pb.PreCommitRequest{TransactionId: transactionID})
+			return err
+		})
+	}
+
+	return g.Wait()
+}
+
+// sendDoCommitToAll sends DoCommit requests to all participants in parallel.
+func (s *CoordinatorService) sendDoCommitToAll(ctx context.Context, transactionID string) error {
+	g, ctx := errgroup.WithContext(ctx)
+
+	for _, participant := range s.Participants {
+		g.Go(func() error {
+			client, ok := s.participantClients[participant]
+			if !ok {
+				return errors.New("no client for participant")
+			}
+			messageID := fmt.Sprintf("%s-%s-docommit", transactionID, participant)
+			reqCtx := middleware.WithMessageID(ctx, messageID)
+			_, err := client.DoCommit(reqCtx, &pb.DoCommitRequest{TransactionId: transactionID})
+			return err
+		})
+	}
+
+	return g.Wait()
 }

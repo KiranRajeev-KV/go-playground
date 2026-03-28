@@ -14,6 +14,10 @@ service TransactionParticipant {
   rpc Commit(CommitRequest) returns (CommitResponse);
   rpc Abort(AbortRequest) returns (AbortResponse);
   rpc GetStatus(StatusRequest) returns (StatusResponse);
+  // 3PC methods
+  rpc CanCommit(CanCommitRequest) returns (CanCommitResponse);
+  rpc PreCommit(PreCommitRequest) returns (PreCommitResponse);
+  rpc DoCommit(DoCommitRequest) returns (DoCommitResponse);
 }
 
 message SubmitOrderRequest {
@@ -87,4 +91,37 @@ message StatusRequest {
 message StatusResponse {
   string transaction_id = 1;
   string state = 2;
+}
+
+// 3PC messages
+message CanCommitRequest {
+  string transaction_id = 1;
+  oneof payload {
+    InventoryPayload inventory = 2;
+    PaymentPayload payment = 3;
+  }
+}
+
+message CanCommitResponse {
+  string transaction_id = 1;
+  bool can_commit = 2;
+  string reason = 3;
+}
+
+message PreCommitRequest {
+  string transaction_id = 1;
+}
+
+message PreCommitResponse {
+  string transaction_id = 1;
+  bool success = 2;
+}
+
+message DoCommitRequest {
+  string transaction_id = 1;
+}
+
+message DoCommitResponse {
+  string transaction_id = 1;
+  bool success = 2;
 }

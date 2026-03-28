@@ -94,6 +94,12 @@ func (i *IdempotencyInterceptor) Unary() grpc.UnaryServerInterceptor {
 			resp = &pb.AbortResponse{}
 		case "/pb.TransactionParticipant/GetStatus":
 			resp = &pb.StatusResponse{}
+		case "/pb.TransactionParticipant/CanCommit":
+			resp = &pb.CanCommitResponse{}
+		case "/pb.TransactionParticipant/PreCommit":
+			resp = &pb.PreCommitResponse{}
+		case "/pb.TransactionParticipant/DoCommit":
+			resp = &pb.DoCommitResponse{}
 		default:
 			return handler(ctx, req)
 		}

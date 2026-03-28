@@ -13,6 +13,9 @@ const (
 	StatePrepared  TransactionState = "PREPARED"
 	StateCommitted TransactionState = "COMMITTED"
 	StateAborted   TransactionState = "ABORTED"
+	// 3PC states
+	StateCanCommit TransactionState = "CAN_COMMIT"
+	StatePreCommit TransactionState = "PRE_COMMIT"
 )
 
 var ErrNotFound = errors.New("not found")

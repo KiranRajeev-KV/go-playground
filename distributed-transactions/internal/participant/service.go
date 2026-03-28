@@ -304,6 +304,189 @@ func (s *ParticipantServer) GetStatus(ctx context.Context, req *pb.StatusRequest
 	}, nil
 }
 
+// CanCommit handles the CanCommit phase of 3PC.
+// It validates business logic and writes to WAL with STATE_CAN_COMMIT (no row lock yet).
+func (s *ParticipantServer) CanCommit(ctx context.Context, req *pb.CanCommitRequest) (*pb.CanCommitResponse, error) {
+	var canCommit bool
+	var reason string
+
+	switch s.participant {
+	case ParticipantInventory:
+		canCommit, reason = s.validateInventory(ctx, req)
+	case ParticipantPayment:
+		canCommit, reason = s.validatePayment(ctx, req)
+	}
+
+	if !canCommit {
+		return &pb.CanCommitResponse{
+			TransactionId: req.TransactionId,
+			CanCommit:     false,
+			Reason:        reason,
+		}, nil
+	}
+
+	var msg proto.Message
+	switch p := req.Payload.(type) {
+	case *pb.CanCommitRequest_Inventory:
+		msg = p.Inventory
+	case *pb.CanCommitRequest_Payment:
+		msg = p.Payment
+	}
+	payload, _ := proto.Marshal(msg)
+
+	tx, err := s.db.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return &pb.CanCommitResponse{
+			TransactionId: req.TransactionId,
+			CanCommit:     false,
+			Reason:        err.Error(),
+		}, nil
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	_, err = tx.ExecContext(ctx,
+		`INSERT INTO transaction_log (transaction_id, participant, state, payload) VALUES (?, ?, ?, ?)`,
+		req.TransactionId, string(s.participant), db.StateCanCommit, payload)
+	if err != nil {
+		return &pb.CanCommitResponse{
+			TransactionId: req.TransactionId,
+			CanCommit:     false,
+			Reason:        err.Error(),
+		}, nil
+	}
+
+	if err := tx.Commit(); err != nil {
+		return &pb.CanCommitResponse{
+			TransactionId: req.TransactionId,
+			CanCommit:     false,
+			Reason:        err.Error(),
+		}, nil
+	}
+
+	return &pb.CanCommitResponse{
+		TransactionId: req.TransactionId,
+		CanCommit:     true,
+		Reason:        "",
+	}, nil
+}
+
+// validateInventory checks if inventory is available (used by both Prepare and CanCommit).
+func (s *ParticipantServer) validateInventory(ctx context.Context, req interface{ GetInventory() *pb.InventoryPayload }) (bool, string) {
+	inv := req.GetInventory()
+	if inv == nil {
+		return false, "invalid payload type for inventory"
+	}
+
+	item, err := s.db.GetInventory(ctx, inv.ItemId)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			return false, "item not found"
+		}
+		return false, err.Error()
+	}
+
+	if item.Quantity < int(inv.Quantity) {
+		return false, fmt.Sprintf("insufficient inventory: have %d, need %d", item.Quantity, inv.Quantity)
+	}
+
+	return true, ""
+}
+
+// validatePayment checks if payment account has sufficient balance (used by both Prepare and CanCommit).
+func (s *ParticipantServer) validatePayment(ctx context.Context, req interface{ GetPayment() *pb.PaymentPayload }) (bool, string) {
+	pay := req.GetPayment()
+	if pay == nil {
+		return false, "invalid payload type for payment"
+	}
+
+	acc, err := s.db.GetPaymentAccount(ctx, pay.UserId)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			return false, "payment account not found"
+		}
+		return false, err.Error()
+	}
+
+	if acc.Balance < pay.Amount {
+		return false, fmt.Sprintf("insufficient balance: have %.2f, need %.2f", acc.Balance, pay.Amount)
+	}
+
+	return true, ""
+}
+
+// PreCommit handles the PreCommit phase of 3PC.
+// It fetches payload from WAL, locks rows, and updates state to STATE_PRE_COMMIT.
+func (s *ParticipantServer) PreCommit(ctx context.Context, req *pb.PreCommitRequest) (*pb.PreCommitResponse, error) {
+	log, err := s.db.GetTransactionLog(ctx, req.TransactionId, string(s.participant))
+	if err != nil {
+		return &pb.PreCommitResponse{
+			TransactionId: req.TransactionId,
+			Success:       false,
+		}, err
+	}
+
+	tx, err := s.db.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return &pb.PreCommitResponse{
+			TransactionId: req.TransactionId,
+			Success:       false,
+		}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	switch s.participant {
+	case ParticipantInventory:
+		if err := s.applyInventory(ctx, tx, log.Payload); err != nil {
+			return &pb.PreCommitResponse{TransactionId: req.TransactionId, Success: false}, err
+		}
+	case ParticipantPayment:
+		if err := s.applyPayment(ctx, tx, log.Payload); err != nil {
+			return &pb.PreCommitResponse{TransactionId: req.TransactionId, Success: false}, err
+		}
+	}
+
+	_, err = tx.ExecContext(ctx,
+		`UPDATE transaction_log SET state = ?, updated_at = datetime('now') WHERE transaction_id = ? AND participant = ?`,
+		db.StatePreCommit, req.TransactionId, s.participant)
+	if err != nil {
+		return &pb.PreCommitResponse{
+			TransactionId: req.TransactionId,
+			Success:       false,
+		}, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return &pb.PreCommitResponse{
+			TransactionId: req.TransactionId,
+			Success:       false,
+		}, err
+	}
+
+	return &pb.PreCommitResponse{
+		TransactionId: req.TransactionId,
+		Success:       true,
+	}, nil
+}
+
+// DoCommit handles the DoCommit phase of 3PC.
+// It applies changes and updates state to STATE_COMMITTED.
+func (s *ParticipantServer) DoCommit(ctx context.Context, req *pb.DoCommitRequest) (*pb.DoCommitResponse, error) {
+	_, err := s.db.DB.ExecContext(ctx,
+		`UPDATE transaction_log SET state = ?, updated_at = datetime('now') WHERE transaction_id = ? AND participant = ?`,
+		db.StateCommitted, req.TransactionId, s.participant)
+	if err != nil {
+		return &pb.DoCommitResponse{
+			TransactionId: req.TransactionId,
+			Success:       false,
+		}, err
+	}
+
+	return &pb.DoCommitResponse{
+		TransactionId: req.TransactionId,
+		Success:       true,
+	}, nil
+}
+
 // DialCoordinator creates a gRPC client to the coordinator service.
 func DialCoordinator(addr string) (pb.TransactionCoordinatorClient, *grpc.ClientConn, error) {
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))

@@ -17,6 +17,7 @@ func main() {
 	recover := flag.Bool("recover", false, "Run crash recovery on startup")
 	commitTimeout := flag.Duration("commit-timeout", 10*time.Second, "Timeout for commit operations (e.g., 10s, 30s)")
 	idempotencyTTL := flag.Duration("idempotency-ttl", 60*time.Second, "TTL for idempotency cache (e.g., 60s)")
+	protocol := flag.String("protocol", "2pc", "Protocol: 2pc or 3pc")
 
 	inventoryAddr := flag.String("inventory-addr", "localhost:50052", "Inventory service address")
 	paymentAddr := flag.String("payment-addr", "localhost:50053", "Payment service address")
@@ -35,7 +36,7 @@ func main() {
 		if *port != 0 {
 			p = *port
 		}
-		if err := app.RunCoordinator(*dbPath, *inventoryAddr, *paymentAddr, p, *recover, *commitTimeout); err != nil {
+		if err := app.RunCoordinator(*dbPath, *inventoryAddr, *paymentAddr, p, *recover, *commitTimeout, *protocol); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}

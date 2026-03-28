@@ -80,7 +80,14 @@ func (s *CoordinatorServer) SubmitOrder(ctx context.Context, req *pb.SubmitOrder
 
 	s.service.store.Create(tx)
 
-	state, err := s.service.ExecuteTwoPhaseCommit(ctx, tx)
+	var state CoordinatorState
+	var execErr error
+
+	if s.service.Protocol == "3pc" {
+		state, execErr = s.service.ExecuteThreePhaseCommit(ctx, tx)
+	} else {
+		state, execErr = s.service.ExecuteTwoPhaseCommit(ctx, tx)
+	}
 
 	if state == StateCommitted {
 		_ = s.service.db.UpdateCoordinatorTransactionState(ctx, transactionID, db.StateCommitted)
@@ -88,7 +95,7 @@ func (s *CoordinatorServer) SubmitOrder(ctx context.Context, req *pb.SubmitOrder
 		_ = s.service.db.UpdateCoordinatorTransactionState(ctx, transactionID, db.StateAborted)
 	}
 
-	if err != nil {
+	if execErr != nil {
 		return &pb.SubmitOrderResponse{
 			TransactionId: transactionID,
 			Status:        string(StateAborted),
