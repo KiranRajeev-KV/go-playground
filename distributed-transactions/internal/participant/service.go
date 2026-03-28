@@ -3,7 +3,6 @@ package participant
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -12,6 +11,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/proto"
 )
 
 // ParticipantType identifies which participant service this is.
@@ -63,7 +63,16 @@ func (s *ParticipantServer) Prepare(ctx context.Context, req *pb.PrepareRequest)
 		voteYes, reason = s.prepareShipping(ctx, req)
 	}
 
-	payload, _ := json.Marshal(req.Payload)
+	var msg proto.Message
+	switch p := req.Payload.(type) {
+	case *pb.PrepareRequest_Inventory:
+		msg = p.Inventory
+	case *pb.PrepareRequest_Payment:
+		msg = p.Payment
+	case *pb.PrepareRequest_Shipping:
+		msg = p.Shipping
+	}
+	payload, _ := proto.Marshal(msg)
 
 	log := &db.TransactionLog{
 		TransactionID: req.TransactionId,
@@ -222,28 +231,20 @@ func (s *ParticipantServer) Commit(ctx context.Context, req *pb.CommitRequest) (
 
 // applyInventory decrements the inventory quantity.
 func (s *ParticipantServer) applyInventory(ctx context.Context, tx *sql.Tx, payload string) error {
-	var p pb.PrepareRequest
-	if err := json.Unmarshal([]byte(payload), &p); err != nil {
+	inv := &pb.InventoryPayload{}
+	if err := proto.Unmarshal([]byte(payload), inv); err != nil {
 		return err
 	}
-	inv, ok := p.Payload.(*pb.PrepareRequest_Inventory)
-	if !ok {
-		return errors.New("invalid payload")
-	}
-	return s.db.ReserveInventory(ctx, tx, inv.Inventory.ItemId, int(inv.Inventory.Quantity))
+	return s.db.ReserveInventory(ctx, tx, inv.ItemId, int(inv.Quantity))
 }
 
 // applyPayment charges the payment account.
 func (s *ParticipantServer) applyPayment(ctx context.Context, tx *sql.Tx, payload string) error {
-	var p pb.PrepareRequest
-	if err := json.Unmarshal([]byte(payload), &p); err != nil {
+	pay := &pb.PaymentPayload{}
+	if err := proto.Unmarshal([]byte(payload), pay); err != nil {
 		return err
 	}
-	pay, ok := p.Payload.(*pb.PrepareRequest_Payment)
-	if !ok {
-		return errors.New("invalid payload")
-	}
-	return s.db.ChargePayment(ctx, tx, pay.Payment.UserId, pay.Payment.Amount)
+	return s.db.ChargePayment(ctx, tx, pay.UserId, pay.Amount)
 }
 
 // Abort handles the abort phase of 2PC.
