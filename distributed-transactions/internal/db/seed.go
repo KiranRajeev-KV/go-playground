@@ -54,7 +54,7 @@ func (d *DB) Seed(ctx context.Context, data SeedData) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	for _, item := range data.Inventory {
 		_, err := tx.ExecContext(ctx,
