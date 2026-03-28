@@ -16,6 +16,7 @@ func main() {
 	seed := flag.Bool("seed", false, "Seed database with sample data")
 	recover := flag.Bool("recover", false, "Run crash recovery on startup")
 	commitTimeout := flag.Duration("commit-timeout", 10*time.Second, "Timeout for commit operations (e.g., 10s, 30s)")
+	idempotencyTTL := flag.Duration("idempotency-ttl", 60*time.Second, "TTL for idempotency cache (e.g., 60s)")
 
 	inventoryAddr := flag.String("inventory-addr", "localhost:50052", "Inventory service address")
 	paymentAddr := flag.String("payment-addr", "localhost:50053", "Payment service address")
@@ -45,7 +46,7 @@ func main() {
 		if *port != 0 {
 			p = *port
 		}
-		if err := app.RunParticipant(*dbPath, "inventory", p, *seed, *recover, *commitTimeout); err != nil {
+		if err := app.RunParticipant(*dbPath, "inventory", p, *seed, *recover, *commitTimeout, *idempotencyTTL); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -55,7 +56,7 @@ func main() {
 		if *port != 0 {
 			p = *port
 		}
-		if err := app.RunParticipant(*dbPath, "payment", p, *seed, *recover, *commitTimeout); err != nil {
+		if err := app.RunParticipant(*dbPath, "payment", p, *seed, *recover, *commitTimeout, *idempotencyTTL); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -65,7 +66,7 @@ func main() {
 		if *port != 0 {
 			p = *port
 		}
-		if err := app.RunParticipant(*dbPath, "shipping", p, *seed, *recover, *commitTimeout); err != nil {
+		if err := app.RunParticipant(*dbPath, "shipping", p, *seed, *recover, *commitTimeout, *idempotencyTTL); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}

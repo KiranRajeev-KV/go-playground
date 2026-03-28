@@ -7,13 +7,14 @@ import (
 	"time"
 
 	"distributed-transactions/internal/db"
+	"distributed-transactions/internal/middleware"
 	"distributed-transactions/internal/participant"
 	"distributed-transactions/pb"
 
 	"google.golang.org/grpc"
 )
 
-func RunParticipant(dbPath, participantType string, port int, seed bool, recover bool, commitTimeout time.Duration) error {
+func RunParticipant(dbPath, participantType string, port int, seed bool, recover bool, commitTimeout time.Duration, idempotencyTTL time.Duration) error {
 	database, err := db.InitDB(dbPath)
 	if err != nil {
 		return fmt.Errorf("failed to init database: %w", err)
@@ -53,7 +54,12 @@ func RunParticipant(dbPath, participantType string, port int, seed bool, recover
 		}
 	}
 
-	grpcServer := grpc.NewServer()
+	idempotencyStore := middleware.NewIdempotencyStore(database, idempotencyTTL)
+	idempotencyInterceptor := middleware.NewIdempotencyInterceptor(idempotencyStore, idempotencyTTL)
+
+	grpcServer := grpc.NewServer(
+		grpc.UnaryInterceptor(idempotencyInterceptor.Unary()),
+	)
 	pb.RegisterTransactionParticipantServer(grpcServer, server)
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))

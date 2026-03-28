@@ -27,6 +27,19 @@ func NewCoordinatorServer(service *CoordinatorService) *CoordinatorServer {
 
 // SubmitOrder handles order submission and executes the 2PC protocol.
 func (s *CoordinatorServer) SubmitOrder(ctx context.Context, req *pb.SubmitOrderRequest) (*pb.SubmitOrderResponse, error) {
+	if req.IdempotencyKey != "" {
+		existing, err := s.service.db.GetCoordinatorTransactionByIdempotencyKey(ctx, req.IdempotencyKey)
+		if err == nil && existing != nil {
+			if existing.State == db.StatePending {
+				return nil, fmt.Errorf("transaction in progress, retry later")
+			}
+			return &pb.SubmitOrderResponse{
+				TransactionId: existing.TransactionID,
+				Status:        string(existing.State),
+			}, nil
+		}
+	}
+
 	transactionID := fmt.Sprintf("tx-%d-%s", time.Now().UnixNano(), req.UserId)
 
 	tx := &CoordinatorTransaction{
@@ -43,9 +56,9 @@ func (s *CoordinatorServer) SubmitOrder(ctx context.Context, req *pb.SubmitOrder
 		UpdatedAt: time.Now(),
 	}
 
-	// Save to database for recovery tracking
 	coordTx := &db.CoordinatorTransaction{
 		TransactionID:   transactionID,
+		IdempotencyKey:  req.IdempotencyKey,
 		State:           db.StatePending,
 		UserID:          req.UserId,
 		ItemID:          req.ItemId,
@@ -53,13 +66,24 @@ func (s *CoordinatorServer) SubmitOrder(ctx context.Context, req *pb.SubmitOrder
 		Amount:          req.Amount,
 		ShippingAddress: req.ShippingAddress,
 	}
-	_ = s.service.db.SaveCoordinatorTransaction(ctx, nil, coordTx)
+	err := s.service.db.SaveCoordinatorTransaction(ctx, nil, coordTx)
+	if err != nil && req.IdempotencyKey != "" {
+		existing, _ := s.service.db.GetCoordinatorTransactionByIdempotencyKey(ctx, req.IdempotencyKey)
+		if existing != nil {
+			if existing.State == db.StatePending {
+				return nil, fmt.Errorf("transaction in progress, retry later")
+			}
+			return &pb.SubmitOrderResponse{
+				TransactionId: existing.TransactionID,
+				Status:        string(existing.State),
+			}, nil
+		}
+	}
 
 	s.service.store.Create(tx)
 
 	state, err := s.service.ExecuteTwoPhaseCommit(ctx, tx)
 
-	// Update state in database
 	if state == StateCommitted {
 		_ = s.service.db.UpdateCoordinatorTransactionState(ctx, transactionID, db.StateCommitted)
 	} else {

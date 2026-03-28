@@ -50,6 +50,7 @@ const (
 	CREATE TABLE IF NOT EXISTS coordinator_transactions (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		transaction_id TEXT UNIQUE NOT NULL,
+		idempotency_key TEXT UNIQUE,
 		state TEXT NOT NULL,
 		user_id TEXT,
 		item_id TEXT,
@@ -61,6 +62,19 @@ const (
 	);
 	CREATE INDEX IF NOT EXISTS idx_coord_tx_state ON coordinator_transactions(state);
 	CREATE INDEX IF NOT EXISTS idx_coord_tx_id ON coordinator_transactions(transaction_id);
+	CREATE INDEX IF NOT EXISTS idx_coord_tx_idem_key ON coordinator_transactions(idempotency_key);
+	`
+
+	CreateIdempotencyKeysTable = `
+	CREATE TABLE IF NOT EXISTS idempotency_keys (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		message_id TEXT UNIQUE NOT NULL,
+		response BLOB NOT NULL,
+		expires_at INTEGER NOT NULL,
+		created_at TEXT NOT NULL DEFAULT (datetime('now'))
+	);
+	CREATE INDEX IF NOT EXISTS idx_idem_message_id ON idempotency_keys(message_id);
+	CREATE INDEX IF NOT EXISTS idx_idem_expires_at ON idempotency_keys(expires_at);
 	`
 )
 
@@ -88,6 +102,7 @@ func (d *DB) InitSchema(ctx context.Context) error {
 		CreateShippingAddressesTable,
 		CreateTransactionLogTable,
 		CreateCoordinatorTransactionsTable,
+		CreateIdempotencyKeysTable,
 	}
 
 	for _, table := range tables {

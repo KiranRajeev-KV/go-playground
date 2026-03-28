@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
 	"distributed-transactions/internal/db"
+	"distributed-transactions/internal/middleware"
 	"distributed-transactions/pb"
 
 	"golang.org/x/sync/errgroup"
@@ -208,6 +210,9 @@ func (s *CoordinatorService) sendPrepare(ctx context.Context, participant string
 		return PrepareResult{Participant: participant, VoteYes: false, Reason: "no client"}, errors.New("no client for participant")
 	}
 
+	messageID := fmt.Sprintf("%s-%s-prepare", tx.TransactionID, participant)
+	ctx = middleware.WithMessageID(ctx, messageID)
+
 	var req *pb.PrepareRequest
 	switch participant {
 	case "inventory":
@@ -264,7 +269,11 @@ func (s *CoordinatorService) sendCommitToAll(ctx context.Context, transactionID 
 			if !ok {
 				return errors.New("no client for participant")
 			}
-			_, err := client.Commit(ctx, &pb.CommitRequest{TransactionId: transactionID})
+			messageID := fmt.Sprintf("%s-%s-commit", transactionID, participant)
+			reqCtx := middleware.WithMessageID(ctx, messageID)
+			_, err := client.Commit(reqCtx, &pb.CommitRequest{
+				TransactionId: transactionID,
+			})
 			return err
 		})
 	}
@@ -274,7 +283,7 @@ func (s *CoordinatorService) sendCommitToAll(ctx context.Context, transactionID 
 
 // sendAbortToAll sends abort requests to all participants.
 func (s *CoordinatorService) sendAbortToAll(transactionID string) {
-	g, _ := errgroup.WithContext(context.Background())
+	g, ctx := errgroup.WithContext(context.Background())
 
 	for _, participant := range s.Participants {
 		g.Go(func() error {
@@ -282,12 +291,18 @@ func (s *CoordinatorService) sendAbortToAll(transactionID string) {
 			if !ok {
 				return nil
 			}
-			_, err := client.Abort(context.Background(), &pb.AbortRequest{TransactionId: transactionID})
+			messageID := fmt.Sprintf("%s-%s-abort", transactionID, participant)
+			reqCtx := middleware.WithMessageID(ctx, messageID)
+			_, err := client.Abort(reqCtx, &pb.AbortRequest{
+				TransactionId: transactionID,
+			})
 			return err
 		})
 	}
 
-	_ = g.Wait()
+	if err := g.Wait(); err != nil {
+		log.Printf("failed to abort transaction %s: %v", transactionID, err)
+	}
 }
 
 // Recover handles crash recovery for pending transactions.
