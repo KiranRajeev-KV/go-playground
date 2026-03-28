@@ -9,11 +9,13 @@ install-proto:
     go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1
 
 proto:
-    protoc --go_out=. --go_opt=paths=source_relative \
-           --go-grpc_out=. --go-grpc_opt=paths=source_relative \
-           proto/transaction.proto
-    mv transaction.pb.go transaction_grpc.pb.go pb/ 2>/dev/null || true
-    rm -rf pb/proto
+    rm -rf pb/*
+    protoc --proto_path=proto \
+           --go_out=pb \
+           --go_opt=paths=source_relative \
+           --go-grpc_out=pb \
+           --go-grpc_opt=paths=source_relative \
+           transaction.proto
 
 build:
     {{BIN}} -mode=coordinator -db=coordinator.db
