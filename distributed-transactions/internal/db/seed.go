@@ -86,6 +86,63 @@ func (d *DB) Seed(ctx context.Context, data SeedData) error {
 	return tx.Commit()
 }
 
+func (d *DB) SeedInventory(ctx context.Context, items []InventoryItem) error {
+	tx, err := d.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	for _, item := range items {
+		_, err := tx.ExecContext(ctx,
+			`INSERT OR REPLACE INTO inventory (item_id, name, quantity, price) VALUES (?, ?, ?, ?)`,
+			item.ItemID, item.Name, item.Quantity, item.Price)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+func (d *DB) SeedPaymentAccounts(ctx context.Context, accounts []PaymentAccount) error {
+	tx, err := d.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	for _, acc := range accounts {
+		_, err := tx.ExecContext(ctx,
+			`INSERT OR REPLACE INTO payment_accounts (user_id, balance) VALUES (?, ?)`,
+			acc.UserID, acc.Balance)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+func (d *DB) SeedShippingAddresses(ctx context.Context, addresses []ShippingAddress) error {
+	tx, err := d.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	for _, addr := range addresses {
+		_, err := tx.ExecContext(ctx,
+			`INSERT OR REPLACE INTO shipping_addresses (user_id, address) VALUES (?, ?)`,
+			addr.UserID, addr.Address)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
 func (d *DB) ClearAll(ctx context.Context) error {
 	tables := []string{"inventory", "payment_accounts", "shipping_addresses", "transaction_log"}
 	for _, table := range tables {
