@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"distributed-transactions/internal/db"
 	"distributed-transactions/pb"
@@ -26,15 +27,19 @@ const (
 // ParticipantServer implements the TransactionParticipant gRPC service.
 type ParticipantServer struct {
 	pb.UnimplementedTransactionParticipantServer
-	db          *db.DB
-	participant ParticipantType
+	db             *db.DB
+	participant    ParticipantType
+	EnableRecovery bool
+	CommitTimeout  time.Duration
 }
 
 // NewParticipantServer creates a new participant server.
-func NewParticipantServer(database *db.DB, participant ParticipantType) *ParticipantServer {
+func NewParticipantServer(database *db.DB, participant ParticipantType, recover bool, commitTimeout time.Duration) *ParticipantServer {
 	return &ParticipantServer{
-		db:          database,
-		participant: participant,
+		db:             database,
+		participant:    participant,
+		EnableRecovery: recover,
+		CommitTimeout:  commitTimeout,
 	}
 }
 
@@ -263,6 +268,66 @@ func (s *ParticipantServer) Abort(ctx context.Context, req *pb.AbortRequest) (*p
 	return &pb.AbortResponse{
 		TransactionId: req.TransactionId,
 		Success:       true,
+	}, nil
+}
+
+// Recover handles crash recovery for pending transactions.
+func (s *ParticipantServer) Recover(ctx context.Context) error {
+	logs, err := s.db.GetPreparedTransactions(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get prepared transactions: %w", err)
+	}
+
+	fmt.Printf("[%s] Found %d prepared transactions to check\n", s.participant, len(logs))
+
+	timeout := s.CommitTimeout
+	if timeout == 0 {
+		timeout = 10 * time.Second
+	}
+
+	for _, log := range logs {
+		fmt.Printf("[%s] Checking transaction %s (updated: %s)\n", s.participant, log.TransactionID, log.UpdatedAt)
+
+		// Parse the updated_at time and check if timeout has elapsed
+		// For simplicity, we'll check if the updated_at is older than timeout
+		// SQLite datetime format: YYYY-MM-DD HH:MM:SS
+		layout := "2006-01-02 15:04:05"
+		updatedTime, err := time.Parse(layout, log.UpdatedAt)
+		if err != nil {
+			fmt.Printf("[%s] Failed to parse time for %s: %v\n", s.participant, log.TransactionID, err)
+			continue
+		}
+
+		elapsed := time.Since(updatedTime)
+		if elapsed > timeout {
+			fmt.Printf("[%s] Transaction %s timed out after %v, auto-aborting\n", s.participant, log.TransactionID, elapsed)
+			_, _ = s.db.DB.ExecContext(ctx,
+				`UPDATE transaction_log SET state = ?, updated_at = datetime('now') WHERE transaction_id = ? AND participant = ?`,
+				db.StateAborted, log.TransactionID, s.participant)
+		} else {
+			fmt.Printf("[%s] Transaction %s still within timeout (%v remaining), waiting for coordinator\n", s.participant, log.TransactionID, timeout-elapsed)
+		}
+	}
+
+	return nil
+}
+
+// GetStatus returns the current state of a transaction.
+func (s *ParticipantServer) GetStatus(ctx context.Context, req *pb.StatusRequest) (*pb.StatusResponse, error) {
+	log, err := s.db.GetTransactionLog(ctx, req.TransactionId, string(s.participant))
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			return &pb.StatusResponse{
+				TransactionId: req.TransactionId,
+				State:         "NOT_FOUND",
+			}, nil
+		}
+		return nil, err
+	}
+
+	return &pb.StatusResponse{
+		TransactionId: log.TransactionID,
+		State:         string(log.State),
 	}, nil
 }
 

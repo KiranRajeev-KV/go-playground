@@ -148,3 +148,93 @@ func (d *DB) ChargePayment(ctx context.Context, tx *sql.Tx, userID string, amoun
 func (d *DB) ConfirmShipping(ctx context.Context, tx *sql.Tx, userID string) error {
 	return nil
 }
+
+type CoordinatorTransaction struct {
+	ID              int64
+	TransactionID   string
+	State           TransactionState
+	UserID          string
+	ItemID          string
+	Quantity        int32
+	Amount          float64
+	ShippingAddress string
+	CreatedAt       string
+	UpdatedAt       string
+}
+
+func (d *DB) SaveCoordinatorTransaction(ctx context.Context, tx *sql.Tx, coordTx *CoordinatorTransaction) error {
+	query := `INSERT INTO coordinator_transactions (transaction_id, state, user_id, item_id, quantity, amount, shipping_address) VALUES (?, ?, ?, ?, ?, ?, ?)`
+
+	var err error
+	if tx != nil {
+		_, err = tx.ExecContext(ctx, query, coordTx.TransactionID, coordTx.State, coordTx.UserID, coordTx.ItemID, coordTx.Quantity, coordTx.Amount, coordTx.ShippingAddress)
+	} else {
+		_, err = d.ExecContext(ctx, query, coordTx.TransactionID, coordTx.State, coordTx.UserID, coordTx.ItemID, coordTx.Quantity, coordTx.Amount, coordTx.ShippingAddress)
+	}
+	return err
+}
+
+func (d *DB) UpdateCoordinatorTransactionState(ctx context.Context, transactionID string, state TransactionState) error {
+	_, err := d.ExecContext(ctx,
+		`UPDATE coordinator_transactions SET state = ?, updated_at = datetime('now') WHERE transaction_id = ?`,
+		state, transactionID)
+	return err
+}
+
+func (d *DB) GetCoordinatorTransaction(ctx context.Context, transactionID string) (*CoordinatorTransaction, error) {
+	var tx CoordinatorTransaction
+	err := d.QueryRowContext(ctx,
+		`SELECT id, transaction_id, state, user_id, item_id, quantity, amount, shipping_address, created_at, updated_at 
+		 FROM coordinator_transactions WHERE transaction_id = ?`,
+		transactionID).
+		Scan(&tx.ID, &tx.TransactionID, &tx.State, &tx.UserID, &tx.ItemID, &tx.Quantity, &tx.Amount, &tx.ShippingAddress, &tx.CreatedAt, &tx.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &tx, nil
+}
+
+func (d *DB) GetPendingCoordinatorTransactions(ctx context.Context) ([]CoordinatorTransaction, error) {
+	rows, err := d.QueryContext(ctx,
+		`SELECT id, transaction_id, state, user_id, item_id, quantity, amount, shipping_address, created_at, updated_at 
+		 FROM coordinator_transactions WHERE state NOT IN (?, ?)`,
+		StateCommitted, StateAborted)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var txs []CoordinatorTransaction
+	for rows.Next() {
+		var tx CoordinatorTransaction
+		if err := rows.Scan(&tx.ID, &tx.TransactionID, &tx.State, &tx.UserID, &tx.ItemID, &tx.Quantity, &tx.Amount, &tx.ShippingAddress, &tx.CreatedAt, &tx.UpdatedAt); err != nil {
+			return nil, err
+		}
+		txs = append(txs, tx)
+	}
+	return txs, rows.Err()
+}
+
+func (d *DB) GetPreparedTransactions(ctx context.Context) ([]TransactionLog, error) {
+	rows, err := d.QueryContext(ctx,
+		`SELECT id, transaction_id, participant, state, payload, created_at, updated_at 
+		 FROM transaction_log WHERE state = ?`,
+		StatePrepared)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var logs []TransactionLog
+	for rows.Next() {
+		var log TransactionLog
+		if err := rows.Scan(&log.ID, &log.TransactionID, &log.Participant, &log.State, &log.Payload, &log.CreatedAt, &log.UpdatedAt); err != nil {
+			return nil, err
+		}
+		logs = append(logs, log)
+	}
+	return logs, rows.Err()
+}

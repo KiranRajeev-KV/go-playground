@@ -1,0 +1,42 @@
+set shell := ["bash", "-c"]
+
+BIN := "dist-tx"
+
+default := "build"
+
+build:
+    go build -o {{BIN}} .
+
+run-coordinator:
+    {{BIN}} -mode=coordinator -db=coordinator.db
+
+run-inventory:
+    {{BIN}} -mode=inventory -db=inventory.db -seed
+
+run-payment:
+    {{BIN}} -mode=payment -db=payment.db -seed
+
+run-shipping:
+    {{BIN}} -mode=shipping -db=shipping.db -seed
+
+run-all: build
+    @echo "Starting all services..."
+    {{BIN}} -mode=coordinator -db=coordinator.db &
+    {{BIN}} -mode=inventory -db=inventory.db -seed &
+    {{BIN}} -mode=payment -db=payment.db -seed &
+    {{BIN}} -mode=shipping -db=shipping.db -seed &
+
+clean-data:
+    rm -f *.db
+
+lint:
+    golangci-lint run ./...
+
+fmt:
+    go fmt ./...
+
+test:
+    go test ./...
+
+stop-all:
+    pkill -f "{{BIN}}" || true

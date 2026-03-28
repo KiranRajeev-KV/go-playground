@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"time"
 
 	"distributed-transactions/internal/coordinator"
 	"distributed-transactions/internal/db"
@@ -12,7 +13,7 @@ import (
 	"google.golang.org/grpc"
 )
 
-func RunCoordinator(dbPath, inventoryAddr, paymentAddr, shippingAddr string, port int) error {
+func RunCoordinator(dbPath, inventoryAddr, paymentAddr, shippingAddr string, port int, recover bool, commitTimeout time.Duration) error {
 	database, err := db.InitDB(dbPath)
 	if err != nil {
 		return fmt.Errorf("failed to init database: %w", err)
@@ -29,8 +30,15 @@ func RunCoordinator(dbPath, inventoryAddr, paymentAddr, shippingAddr string, por
 		return fmt.Errorf("failed to create participant clients: %w", err)
 	}
 
-	service := coordinator.NewCoordinatorService(database, clients)
+	service := coordinator.NewCoordinatorService(database, clients, recover, commitTimeout)
 	server := coordinator.NewCoordinatorServer(service)
+
+	if recover {
+		fmt.Println("Running crash recovery...")
+		if err := service.Recover(ctx); err != nil {
+			fmt.Printf("Recovery error: %v\n", err)
+		}
+	}
 
 	grpcServer := grpc.NewServer()
 	pb.RegisterTransactionCoordinatorServer(grpcServer, server)

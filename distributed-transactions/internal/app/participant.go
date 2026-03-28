@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"time"
 
 	"distributed-transactions/internal/db"
 	"distributed-transactions/internal/participant"
@@ -12,7 +13,7 @@ import (
 	"google.golang.org/grpc"
 )
 
-func RunParticipant(dbPath, participantType string, port int, seed bool) error {
+func RunParticipant(dbPath, participantType string, port int, seed bool, recover bool, commitTimeout time.Duration) error {
 	database, err := db.InitDB(dbPath)
 	if err != nil {
 		return fmt.Errorf("failed to init database: %w", err)
@@ -43,7 +44,14 @@ func RunParticipant(dbPath, participantType string, port int, seed bool) error {
 		return fmt.Errorf("invalid participant type: %s", participantType)
 	}
 
-	server := participant.NewParticipantServer(database, pType)
+	server := participant.NewParticipantServer(database, pType, recover, commitTimeout)
+
+	if recover {
+		fmt.Println("Running crash recovery...")
+		if err := server.Recover(ctx); err != nil {
+			fmt.Printf("Recovery error: %v\n", err)
+		}
+	}
 
 	grpcServer := grpc.NewServer()
 	pb.RegisterTransactionParticipantServer(grpcServer, server)

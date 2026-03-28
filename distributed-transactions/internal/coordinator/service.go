@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"distributed-transactions/internal/db"
 	"distributed-transactions/pb"
 
 	"google.golang.org/grpc"
@@ -42,9 +43,29 @@ func (s *CoordinatorServer) SubmitOrder(ctx context.Context, req *pb.SubmitOrder
 		UpdatedAt: time.Now(),
 	}
 
+	// Save to database for recovery tracking
+	coordTx := &db.CoordinatorTransaction{
+		TransactionID:   transactionID,
+		State:           db.StatePending,
+		UserID:          req.UserId,
+		ItemID:          req.ItemId,
+		Quantity:        req.Quantity,
+		Amount:          req.Amount,
+		ShippingAddress: req.ShippingAddress,
+	}
+	_ = s.service.db.SaveCoordinatorTransaction(ctx, nil, coordTx)
+
 	s.service.store.Create(tx)
 
 	state, err := s.service.ExecuteTwoPhaseCommit(ctx, tx)
+
+	// Update state in database
+	if state == StateCommitted {
+		_ = s.service.db.UpdateCoordinatorTransactionState(ctx, transactionID, db.StateCommitted)
+	} else {
+		_ = s.service.db.UpdateCoordinatorTransactionState(ctx, transactionID, db.StateAborted)
+	}
+
 	if err != nil {
 		return &pb.SubmitOrderResponse{
 			TransactionId: transactionID,

@@ -111,16 +111,20 @@ type CoordinatorService struct {
 	db                 *db.DB
 	store              *TransactionStore
 	participantClients map[string]pb.TransactionParticipantClient
+	EnableRecovery     bool
+	CommitTimeout      time.Duration
 
 	Participants []string
 }
 
 // NewCoordinatorService creates a new coordinator service.
-func NewCoordinatorService(database *db.DB, clients map[string]pb.TransactionParticipantClient) *CoordinatorService {
+func NewCoordinatorService(database *db.DB, clients map[string]pb.TransactionParticipantClient, recover bool, commitTimeout time.Duration) *CoordinatorService {
 	return &CoordinatorService{
 		db:                 database,
 		store:              NewTransactionStore(),
 		participantClients: clients,
+		EnableRecovery:     recover,
+		CommitTimeout:      commitTimeout,
 		Participants:       []string{"inventory", "payment", "shipping"},
 	}
 }
@@ -284,4 +288,87 @@ func (s *CoordinatorService) sendAbortToAll(transactionID string) {
 	}
 
 	_ = g.Wait()
+}
+
+// Recover handles crash recovery for pending transactions.
+func (s *CoordinatorService) Recover(ctx context.Context) error {
+	txs, err := s.db.GetPendingCoordinatorTransactions(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get pending transactions: %w", err)
+	}
+
+	fmt.Printf("[Coordinator] Found %d pending transactions to recover\n", len(txs))
+
+	for _, coordTx := range txs {
+		fmt.Printf("[Coordinator] Recovering transaction %s (state: %s)\n", coordTx.TransactionID, coordTx.State)
+
+		// Query all participants for their state
+		participantStates, err := s.queryParticipantStates(ctx, coordTx.TransactionID)
+		if err != nil {
+			fmt.Printf("[Coordinator] Failed to query participants for %s: %v\n", coordTx.TransactionID, err)
+			continue
+		}
+
+		allPrepared := true
+		anyAborted := false
+
+		for participant, state := range participantStates {
+			fmt.Printf("[Coordinator] %s state: %s\n", participant, state)
+			if state == "ABORTED" {
+				anyAborted = true
+			}
+			if state != "PREPARED" {
+				allPrepared = false
+			}
+		}
+
+		if anyAborted {
+			// Send abort to all who are prepared
+			fmt.Printf("[Coordinator] Aborting transaction %s\n", coordTx.TransactionID)
+			s.sendAbortToAll(coordTx.TransactionID)
+			_ = s.db.UpdateCoordinatorTransactionState(ctx, coordTx.TransactionID, db.StateAborted)
+		} else if allPrepared {
+			// All prepared, retry commit
+			fmt.Printf("[Coordinator] Retrying commit for %s\n", coordTx.TransactionID)
+			err := s.sendCommitToAll(ctx, coordTx.TransactionID)
+			if err != nil {
+				fmt.Printf("[Coordinator] Commit failed: %v\n", err)
+				_ = s.db.UpdateCoordinatorTransactionState(ctx, coordTx.TransactionID, db.StateAborted)
+			} else {
+				_ = s.db.UpdateCoordinatorTransactionState(ctx, coordTx.TransactionID, db.StateCommitted)
+			}
+		} else {
+			// Incomplete prepare, abort
+			fmt.Printf("[Coordinator] Incomplete prepare, aborting %s\n", coordTx.TransactionID)
+			s.sendAbortToAll(coordTx.TransactionID)
+			_ = s.db.UpdateCoordinatorTransactionState(ctx, coordTx.TransactionID, db.StateAborted)
+		}
+	}
+
+	return nil
+}
+
+// queryParticipantStates queries all participants for the state of a transaction.
+func (s *CoordinatorService) queryParticipantStates(ctx context.Context, transactionID string) (map[string]string, error) {
+	states := make(map[string]string)
+
+	for _, participant := range s.Participants {
+		client, ok := s.participantClients[participant]
+		if !ok {
+			states[participant] = "UNKNOWN"
+			continue
+		}
+
+		resp, err := client.GetStatus(ctx, &pb.StatusRequest{TransactionId: transactionID})
+		if err != nil {
+			fmt.Printf("[Coordinator] Failed to get status from %s: %v\n", participant, err)
+			states[participant] = "UNKNOWN"
+			continue
+		}
+
+		states[participant] = resp.State
+		fmt.Printf("[Coordinator] %s reported state: %s\n", participant, resp.State)
+	}
+
+	return states, nil
 }

@@ -45,6 +45,23 @@ const (
 	CREATE INDEX IF NOT EXISTS idx_tx_state ON transaction_log(state);
 	CREATE INDEX IF NOT EXISTS idx_tx_id ON transaction_log(transaction_id);
 	`
+
+	CreateCoordinatorTransactionsTable = `
+	CREATE TABLE IF NOT EXISTS coordinator_transactions (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		transaction_id TEXT UNIQUE NOT NULL,
+		state TEXT NOT NULL,
+		user_id TEXT,
+		item_id TEXT,
+		quantity INTEGER,
+		amount REAL,
+		shipping_address TEXT,
+		created_at TEXT NOT NULL DEFAULT (datetime('now')),
+		updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+	);
+	CREATE INDEX IF NOT EXISTS idx_coord_tx_state ON coordinator_transactions(state);
+	CREATE INDEX IF NOT EXISTS idx_coord_tx_id ON coordinator_transactions(transaction_id);
+	`
 )
 
 type DB struct {
@@ -70,6 +87,7 @@ func (d *DB) InitSchema(ctx context.Context) error {
 		CreatePaymentAccountsTable,
 		CreateShippingAddressesTable,
 		CreateTransactionLogTable,
+		CreateCoordinatorTransactionsTable,
 	}
 
 	for _, table := range tables {

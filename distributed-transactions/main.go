@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"distributed-transactions/internal/app"
 )
@@ -13,6 +14,8 @@ func main() {
 	dbPath := flag.String("db", "data.db", "Path to SQLite database")
 	port := flag.Int("port", 0, "Port to listen on (default depends on mode)")
 	seed := flag.Bool("seed", false, "Seed database with sample data")
+	recover := flag.Bool("recover", false, "Run crash recovery on startup")
+	commitTimeout := flag.Duration("commit-timeout", 10*time.Second, "Timeout for commit operations (e.g., 10s, 30s)")
 
 	inventoryAddr := flag.String("inventory-addr", "localhost:50052", "Inventory service address")
 	paymentAddr := flag.String("payment-addr", "localhost:50053", "Payment service address")
@@ -32,7 +35,7 @@ func main() {
 		if *port != 0 {
 			p = *port
 		}
-		if err := app.RunCoordinator(*dbPath, *inventoryAddr, *paymentAddr, *shippingAddr, p); err != nil {
+		if err := app.RunCoordinator(*dbPath, *inventoryAddr, *paymentAddr, *shippingAddr, p, *recover, *commitTimeout); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -42,7 +45,7 @@ func main() {
 		if *port != 0 {
 			p = *port
 		}
-		if err := app.RunParticipant(*dbPath, "inventory", p, *seed); err != nil {
+		if err := app.RunParticipant(*dbPath, "inventory", p, *seed, *recover, *commitTimeout); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -52,7 +55,7 @@ func main() {
 		if *port != 0 {
 			p = *port
 		}
-		if err := app.RunParticipant(*dbPath, "payment", p, *seed); err != nil {
+		if err := app.RunParticipant(*dbPath, "payment", p, *seed, *recover, *commitTimeout); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -62,7 +65,7 @@ func main() {
 		if *port != 0 {
 			p = *port
 		}
-		if err := app.RunParticipant(*dbPath, "shipping", p, *seed); err != nil {
+		if err := app.RunParticipant(*dbPath, "shipping", p, *seed, *recover, *commitTimeout); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
