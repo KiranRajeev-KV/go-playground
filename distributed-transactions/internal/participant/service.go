@@ -415,47 +415,13 @@ func (s *ParticipantServer) validatePayment(ctx context.Context, req interface{ 
 }
 
 // PreCommit handles the PreCommit phase of 3PC.
-// It fetches payload from WAL, locks rows, and updates state to STATE_PRE_COMMIT.
+// It only updates WAL state to STATE_PRE_COMMIT (acknowledges readiness).
+// NO business logic changes here - that's done in DoCommit.
 func (s *ParticipantServer) PreCommit(ctx context.Context, req *pb.PreCommitRequest) (*pb.PreCommitResponse, error) {
-	log, err := s.db.GetTransactionLog(ctx, req.TransactionId, string(s.participant))
-	if err != nil {
-		return &pb.PreCommitResponse{
-			TransactionId: req.TransactionId,
-			Success:       false,
-		}, err
-	}
-
-	tx, err := s.db.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return &pb.PreCommitResponse{
-			TransactionId: req.TransactionId,
-			Success:       false,
-		}, err
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	switch s.participant {
-	case ParticipantInventory:
-		if err := s.applyInventory(ctx, tx, log.Payload); err != nil {
-			return &pb.PreCommitResponse{TransactionId: req.TransactionId, Success: false}, err
-		}
-	case ParticipantPayment:
-		if err := s.applyPayment(ctx, tx, log.Payload); err != nil {
-			return &pb.PreCommitResponse{TransactionId: req.TransactionId, Success: false}, err
-		}
-	}
-
-	_, err = tx.ExecContext(ctx,
+	_, err := s.db.DB.ExecContext(ctx,
 		`UPDATE transaction_log SET state = ?, updated_at = datetime('now') WHERE transaction_id = ? AND participant = ?`,
-		db.StatePreCommit, req.TransactionId, s.participant)
+		db.StatePreCommit, req.TransactionId, string(s.participant))
 	if err != nil {
-		return &pb.PreCommitResponse{
-			TransactionId: req.TransactionId,
-			Success:       false,
-		}, err
-	}
-
-	if err := tx.Commit(); err != nil {
 		return &pb.PreCommitResponse{
 			TransactionId: req.TransactionId,
 			Success:       false,
@@ -469,12 +435,47 @@ func (s *ParticipantServer) PreCommit(ctx context.Context, req *pb.PreCommitRequ
 }
 
 // DoCommit handles the DoCommit phase of 3PC.
-// It applies changes and updates state to STATE_COMMITTED.
+// It fetches payload from WAL, applies business changes, and updates state to STATE_COMMITTED.
 func (s *ParticipantServer) DoCommit(ctx context.Context, req *pb.DoCommitRequest) (*pb.DoCommitResponse, error) {
-	_, err := s.db.DB.ExecContext(ctx,
-		`UPDATE transaction_log SET state = ?, updated_at = datetime('now') WHERE transaction_id = ? AND participant = ?`,
-		db.StateCommitted, req.TransactionId, s.participant)
+	log, err := s.db.GetTransactionLog(ctx, req.TransactionId, string(s.participant))
 	if err != nil {
+		return &pb.DoCommitResponse{
+			TransactionId: req.TransactionId,
+			Success:       false,
+		}, err
+	}
+
+	tx, err := s.db.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return &pb.DoCommitResponse{
+			TransactionId: req.TransactionId,
+			Success:       false,
+		}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	switch s.participant {
+	case ParticipantInventory:
+		if err := s.applyInventory(ctx, tx, log.Payload); err != nil {
+			return &pb.DoCommitResponse{TransactionId: req.TransactionId, Success: false}, err
+		}
+	case ParticipantPayment:
+		if err := s.applyPayment(ctx, tx, log.Payload); err != nil {
+			return &pb.DoCommitResponse{TransactionId: req.TransactionId, Success: false}, err
+		}
+	}
+
+	_, err = tx.ExecContext(ctx,
+		`UPDATE transaction_log SET state = ?, updated_at = datetime('now') WHERE transaction_id = ? AND participant = ?`,
+		db.StateCommitted, req.TransactionId, string(s.participant))
+	if err != nil {
+		return &pb.DoCommitResponse{
+			TransactionId: req.TransactionId,
+			Success:       false,
+		}, err
+	}
+
+	if err := tx.Commit(); err != nil {
 		return &pb.DoCommitResponse{
 			TransactionId: req.TransactionId,
 			Success:       false,
