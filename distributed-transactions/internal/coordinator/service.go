@@ -45,11 +45,10 @@ func (s *CoordinatorServer) SubmitOrder(ctx context.Context, req *pb.SubmitOrder
 	tx := &CoordinatorTransaction{
 		TransactionID: transactionID,
 		OrderDetails: OrderDetails{
-			UserID:          req.UserId,
-			ItemID:          req.ItemId,
-			Quantity:        req.Quantity,
-			Amount:          req.Amount,
-			ShippingAddress: req.ShippingAddress,
+			UserID:   req.UserId,
+			ItemID:   req.ItemId,
+			Quantity: req.Quantity,
+			Amount:   req.Amount,
 		},
 		State:     StateInit,
 		CreatedAt: time.Now(),
@@ -57,14 +56,13 @@ func (s *CoordinatorServer) SubmitOrder(ctx context.Context, req *pb.SubmitOrder
 	}
 
 	coordTx := &db.CoordinatorTransaction{
-		TransactionID:   transactionID,
-		IdempotencyKey:  req.IdempotencyKey,
-		State:           db.StatePending,
-		UserID:          req.UserId,
-		ItemID:          req.ItemId,
-		Quantity:        req.Quantity,
-		Amount:          req.Amount,
-		ShippingAddress: req.ShippingAddress,
+		TransactionID:  transactionID,
+		IdempotencyKey: req.IdempotencyKey,
+		State:          db.StatePending,
+		UserID:         req.UserId,
+		ItemID:         req.ItemId,
+		Quantity:       req.Quantity,
+		Amount:         req.Amount,
 	}
 	err := s.service.db.SaveCoordinatorTransaction(ctx, nil, coordTx)
 	if err != nil && req.IdempotencyKey != "" {
@@ -120,7 +118,7 @@ func (s *CoordinatorServer) GetOrderStatus(ctx context.Context, req *pb.OrderSta
 }
 
 // CreateParticipantClients creates gRPC clients for all participant services.
-func CreateParticipantClients(inventoryAddr, paymentAddr, shippingAddr string) (map[string]pb.TransactionParticipantClient, error) {
+func CreateParticipantClients(inventoryAddr, paymentAddr string) (map[string]pb.TransactionParticipantClient, error) {
 	clients := make(map[string]pb.TransactionParticipantClient)
 
 	connInv, err := grpc.NewClient(inventoryAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -134,12 +132,6 @@ func CreateParticipantClients(inventoryAddr, paymentAddr, shippingAddr string) (
 		return nil, fmt.Errorf("failed to connect to payment: %w", err)
 	}
 	clients["payment"] = pb.NewTransactionParticipantClient(connPay)
-
-	connShip, err := grpc.NewClient(shippingAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to shipping: %w", err)
-	}
-	clients["shipping"] = pb.NewTransactionParticipantClient(connShip)
 
 	return clients, nil
 }

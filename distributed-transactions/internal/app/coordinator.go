@@ -13,7 +13,7 @@ import (
 	"google.golang.org/grpc"
 )
 
-func RunCoordinator(dbPath, inventoryAddr, paymentAddr, shippingAddr string, port int, recover bool, commitTimeout time.Duration) error {
+func RunCoordinator(dbPath, inventoryAddr, paymentAddr string, port int, recover bool, commitTimeout time.Duration) error {
 	database, err := db.InitDB(dbPath)
 	if err != nil {
 		return fmt.Errorf("failed to init database: %w", err)
@@ -25,7 +25,7 @@ func RunCoordinator(dbPath, inventoryAddr, paymentAddr, shippingAddr string, por
 		return fmt.Errorf("failed to init schema: %w", err)
 	}
 
-	clients, err := coordinator.CreateParticipantClients(inventoryAddr, paymentAddr, shippingAddr)
+	clients, err := coordinator.CreateParticipantClients(inventoryAddr, paymentAddr)
 	if err != nil {
 		return fmt.Errorf("failed to create participant clients: %w", err)
 	}

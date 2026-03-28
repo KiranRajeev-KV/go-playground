@@ -39,8 +39,6 @@ func RunParticipant(dbPath, participantType string, port int, seed bool, recover
 		pType = participant.ParticipantInventory
 	case "payment":
 		pType = participant.ParticipantPayment
-	case "shipping":
-		pType = participant.ParticipantShipping
 	default:
 		return fmt.Errorf("invalid participant type: %s", participantType)
 	}
@@ -79,8 +77,6 @@ func seedParticipant(ctx context.Context, database *db.DB, participantType strin
 		return database.SeedInventory(ctx, seedData.Inventory)
 	case "payment":
 		return database.SeedPaymentAccounts(ctx, seedData.PaymentAccounts)
-	case "shipping":
-		return database.SeedShippingAddresses(ctx, seedData.ShippingAddresses)
 	default:
 		return fmt.Errorf("unknown participant type: %s", participantType)
 	}

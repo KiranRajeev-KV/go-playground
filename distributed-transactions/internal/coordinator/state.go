@@ -30,11 +30,10 @@ var ErrInvalidStateTransition = errors.New("invalid state transition")
 
 // OrderDetails holds the order information needed for the transaction.
 type OrderDetails struct {
-	UserID          string
-	ItemID          string
-	Quantity        int32
-	Amount          float64
-	ShippingAddress string
+	UserID   string
+	ItemID   string
+	Quantity int32
+	Amount   float64
 }
 
 // ParticipantVote represents a participant's vote during the prepare phase.
@@ -127,7 +126,7 @@ func NewCoordinatorService(database *db.DB, clients map[string]pb.TransactionPar
 		participantClients: clients,
 		EnableRecovery:     recover,
 		CommitTimeout:      commitTimeout,
-		Participants:       []string{"inventory", "payment", "shipping"},
+		Participants:       []string{"inventory", "payment"},
 	}
 }
 
@@ -232,16 +231,6 @@ func (s *CoordinatorService) sendPrepare(ctx context.Context, participant string
 				Payment: &pb.PaymentPayload{
 					UserId: tx.OrderDetails.UserID,
 					Amount: tx.OrderDetails.Amount,
-				},
-			},
-		}
-	case "shipping":
-		req = &pb.PrepareRequest{
-			TransactionId: tx.TransactionID,
-			Payload: &pb.PrepareRequest_Shipping{
-				Shipping: &pb.ShippingPayload{
-					UserId:  tx.OrderDetails.UserID,
-					Address: tx.OrderDetails.ShippingAddress,
 				},
 			},
 		}

@@ -21,7 +21,6 @@ type ParticipantType string
 const (
 	ParticipantInventory ParticipantType = "inventory"
 	ParticipantPayment   ParticipantType = "payment"
-	ParticipantShipping  ParticipantType = "shipping"
 )
 
 // ParticipantServer implements the TransactionParticipant gRPC service.
@@ -64,8 +63,6 @@ func (s *ParticipantServer) Prepare(ctx context.Context, req *pb.PrepareRequest)
 		voteYes, reason = s.prepareInventory(ctx, req)
 	case ParticipantPayment:
 		voteYes, reason = s.preparePayment(ctx, req)
-	case ParticipantShipping:
-		voteYes, reason = s.prepareShipping(ctx, req)
 	}
 
 	var msg proto.Message
@@ -74,8 +71,6 @@ func (s *ParticipantServer) Prepare(ctx context.Context, req *pb.PrepareRequest)
 		msg = p.Inventory
 	case *pb.PrepareRequest_Payment:
 		msg = p.Payment
-	case *pb.PrepareRequest_Shipping:
-		msg = p.Shipping
 	}
 	payload, _ := proto.Marshal(msg)
 
@@ -153,28 +148,6 @@ func (s *ParticipantServer) preparePayment(ctx context.Context, req *pb.PrepareR
 
 	if acc.Balance < pay.Payment.Amount {
 		return false, fmt.Sprintf("insufficient balance: have %.2f, need %.2f", acc.Balance, pay.Payment.Amount)
-	}
-
-	return true, ""
-}
-
-// prepareShipping validates that a shipping address exists for the user.
-func (s *ParticipantServer) prepareShipping(ctx context.Context, req *pb.PrepareRequest) (bool, string) {
-	ship, ok := req.Payload.(*pb.PrepareRequest_Shipping)
-	if !ok {
-		return false, "invalid payload type for shipping"
-	}
-
-	addr, err := s.db.GetShippingAddress(ctx, ship.Shipping.UserId)
-	if err != nil {
-		if errors.Is(err, db.ErrNotFound) {
-			return false, "shipping address not found"
-		}
-		return false, err.Error()
-	}
-
-	if addr.Address == "" {
-		return false, "no shipping address on file"
 	}
 
 	return true, ""

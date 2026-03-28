@@ -5,9 +5,8 @@ import (
 )
 
 type SeedData struct {
-	Inventory         []InventoryItem
-	PaymentAccounts   []PaymentAccount
-	ShippingAddresses []ShippingAddress
+	Inventory       []InventoryItem
+	PaymentAccounts []PaymentAccount
 }
 
 type InventoryItem struct {
@@ -20,11 +19,6 @@ type InventoryItem struct {
 type PaymentAccount struct {
 	UserID  string
 	Balance float64
-}
-
-type ShippingAddress struct {
-	UserID  string
-	Address string
 }
 
 func DefaultSeedData() SeedData {
@@ -40,11 +34,6 @@ func DefaultSeedData() SeedData {
 			{UserID: "user-001", Balance: 5000.00},
 			{UserID: "user-002", Balance: 3000.00},
 			{UserID: "user-003", Balance: 10000.00},
-		},
-		ShippingAddresses: []ShippingAddress{
-			{UserID: "user-001", Address: "123 Main St, New York, NY 10001"},
-			{UserID: "user-002", Address: "456 Oak Ave, Los Angeles, CA 90001"},
-			{UserID: "user-003", Address: "789 Pine Rd, Chicago, IL 60601"},
 		},
 	}
 }
@@ -69,15 +58,6 @@ func (d *DB) Seed(ctx context.Context, data SeedData) error {
 		_, err := tx.ExecContext(ctx,
 			`INSERT OR REPLACE INTO payment_accounts (user_id, balance) VALUES (?, ?)`,
 			acc.UserID, acc.Balance)
-		if err != nil {
-			return err
-		}
-	}
-
-	for _, addr := range data.ShippingAddresses {
-		_, err := tx.ExecContext(ctx,
-			`INSERT OR REPLACE INTO shipping_addresses (user_id, address) VALUES (?, ?)`,
-			addr.UserID, addr.Address)
 		if err != nil {
 			return err
 		}
@@ -124,27 +104,8 @@ func (d *DB) SeedPaymentAccounts(ctx context.Context, accounts []PaymentAccount)
 	return tx.Commit()
 }
 
-func (d *DB) SeedShippingAddresses(ctx context.Context, addresses []ShippingAddress) error {
-	tx, err := d.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	for _, addr := range addresses {
-		_, err := tx.ExecContext(ctx,
-			`INSERT OR REPLACE INTO shipping_addresses (user_id, address) VALUES (?, ?)`,
-			addr.UserID, addr.Address)
-		if err != nil {
-			return err
-		}
-	}
-
-	return tx.Commit()
-}
-
 func (d *DB) ClearAll(ctx context.Context) error {
-	tables := []string{"inventory", "payment_accounts", "shipping_addresses", "transaction_log"}
+	tables := []string{"inventory", "payment_accounts", "transaction_log"}
 	for _, table := range tables {
 		if _, err := d.ExecContext(ctx, "DELETE FROM "+table); err != nil {
 			return err
@@ -173,15 +134,4 @@ func (d *DB) GetPaymentAccount(ctx context.Context, userID string) (*PaymentAcco
 		return nil, err
 	}
 	return &acc, nil
-}
-
-func (d *DB) GetShippingAddress(ctx context.Context, userID string) (*ShippingAddress, error) {
-	var addr ShippingAddress
-	err := d.QueryRowContext(ctx,
-		`SELECT user_id, address FROM shipping_addresses WHERE user_id = ?`, userID).
-		Scan(&addr.UserID, &addr.Address)
-	if err != nil {
-		return nil, err
-	}
-	return &addr, nil
 }

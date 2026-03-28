@@ -145,32 +145,27 @@ func (d *DB) ChargePayment(ctx context.Context, tx *sql.Tx, userID string, amoun
 	return err
 }
 
-func (d *DB) ConfirmShipping(ctx context.Context, tx *sql.Tx, userID string) error {
-	return nil
-}
-
 type CoordinatorTransaction struct {
-	ID              int64
-	TransactionID   string
-	IdempotencyKey  string
-	State           TransactionState
-	UserID          string
-	ItemID          string
-	Quantity        int32
-	Amount          float64
-	ShippingAddress string
-	CreatedAt       string
-	UpdatedAt       string
+	ID             int64
+	TransactionID  string
+	IdempotencyKey string
+	State          TransactionState
+	UserID         string
+	ItemID         string
+	Quantity       int32
+	Amount         float64
+	CreatedAt      string
+	UpdatedAt      string
 }
 
 func (d *DB) SaveCoordinatorTransaction(ctx context.Context, tx *sql.Tx, coordTx *CoordinatorTransaction) error {
-	query := `INSERT INTO coordinator_transactions (transaction_id, idempotency_key, state, user_id, item_id, quantity, amount, shipping_address) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+	query := `INSERT INTO coordinator_transactions (transaction_id, idempotency_key, state, user_id, item_id, quantity, amount) VALUES (?, ?, ?, ?, ?, ?, ?)`
 
 	var err error
 	if tx != nil {
-		_, err = tx.ExecContext(ctx, query, coordTx.TransactionID, coordTx.IdempotencyKey, coordTx.State, coordTx.UserID, coordTx.ItemID, coordTx.Quantity, coordTx.Amount, coordTx.ShippingAddress)
+		_, err = tx.ExecContext(ctx, query, coordTx.TransactionID, coordTx.IdempotencyKey, coordTx.State, coordTx.UserID, coordTx.ItemID, coordTx.Quantity, coordTx.Amount)
 	} else {
-		_, err = d.ExecContext(ctx, query, coordTx.TransactionID, coordTx.IdempotencyKey, coordTx.State, coordTx.UserID, coordTx.ItemID, coordTx.Quantity, coordTx.Amount, coordTx.ShippingAddress)
+		_, err = d.ExecContext(ctx, query, coordTx.TransactionID, coordTx.IdempotencyKey, coordTx.State, coordTx.UserID, coordTx.ItemID, coordTx.Quantity, coordTx.Amount)
 	}
 	return err
 }
@@ -185,10 +180,10 @@ func (d *DB) UpdateCoordinatorTransactionState(ctx context.Context, transactionI
 func (d *DB) GetCoordinatorTransaction(ctx context.Context, transactionID string) (*CoordinatorTransaction, error) {
 	var tx CoordinatorTransaction
 	err := d.QueryRowContext(ctx,
-		`SELECT id, transaction_id, idempotency_key, state, user_id, item_id, quantity, amount, shipping_address, created_at, updated_at 
+		`SELECT id, transaction_id, idempotency_key, state, user_id, item_id, quantity, amount, created_at, updated_at 
 		 FROM coordinator_transactions WHERE transaction_id = ?`,
 		transactionID).
-		Scan(&tx.ID, &tx.TransactionID, &tx.IdempotencyKey, &tx.State, &tx.UserID, &tx.ItemID, &tx.Quantity, &tx.Amount, &tx.ShippingAddress, &tx.CreatedAt, &tx.UpdatedAt)
+		Scan(&tx.ID, &tx.TransactionID, &tx.IdempotencyKey, &tx.State, &tx.UserID, &tx.ItemID, &tx.Quantity, &tx.Amount, &tx.CreatedAt, &tx.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
@@ -201,10 +196,10 @@ func (d *DB) GetCoordinatorTransaction(ctx context.Context, transactionID string
 func (d *DB) GetCoordinatorTransactionByIdempotencyKey(ctx context.Context, idempotencyKey string) (*CoordinatorTransaction, error) {
 	var tx CoordinatorTransaction
 	err := d.QueryRowContext(ctx,
-		`SELECT id, transaction_id, idempotency_key, state, user_id, item_id, quantity, amount, shipping_address, created_at, updated_at 
+		`SELECT id, transaction_id, idempotency_key, state, user_id, item_id, quantity, amount, created_at, updated_at 
 		 FROM coordinator_transactions WHERE idempotency_key = ?`,
 		idempotencyKey).
-		Scan(&tx.ID, &tx.TransactionID, &tx.IdempotencyKey, &tx.State, &tx.UserID, &tx.ItemID, &tx.Quantity, &tx.Amount, &tx.ShippingAddress, &tx.CreatedAt, &tx.UpdatedAt)
+		Scan(&tx.ID, &tx.TransactionID, &tx.IdempotencyKey, &tx.State, &tx.UserID, &tx.ItemID, &tx.Quantity, &tx.Amount, &tx.CreatedAt, &tx.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
@@ -216,7 +211,7 @@ func (d *DB) GetCoordinatorTransactionByIdempotencyKey(ctx context.Context, idem
 
 func (d *DB) GetPendingCoordinatorTransactions(ctx context.Context) ([]CoordinatorTransaction, error) {
 	rows, err := d.QueryContext(ctx,
-		`SELECT id, transaction_id, idempotency_key, state, user_id, item_id, quantity, amount, shipping_address, created_at, updated_at 
+		`SELECT id, transaction_id, idempotency_key, state, user_id, item_id, quantity, amount, created_at, updated_at 
 		 FROM coordinator_transactions WHERE state NOT IN (?, ?)`,
 		StateCommitted, StateAborted)
 	if err != nil {
@@ -227,7 +222,7 @@ func (d *DB) GetPendingCoordinatorTransactions(ctx context.Context) ([]Coordinat
 	var txs []CoordinatorTransaction
 	for rows.Next() {
 		var tx CoordinatorTransaction
-		if err := rows.Scan(&tx.ID, &tx.TransactionID, &tx.IdempotencyKey, &tx.State, &tx.UserID, &tx.ItemID, &tx.Quantity, &tx.Amount, &tx.ShippingAddress, &tx.CreatedAt, &tx.UpdatedAt); err != nil {
+		if err := rows.Scan(&tx.ID, &tx.TransactionID, &tx.IdempotencyKey, &tx.State, &tx.UserID, &tx.ItemID, &tx.Quantity, &tx.Amount, &tx.CreatedAt, &tx.UpdatedAt); err != nil {
 			return nil, err
 		}
 		txs = append(txs, tx)

@@ -24,13 +24,6 @@ const (
 	);
 	`
 
-	CreateShippingAddressesTable = `
-	CREATE TABLE IF NOT EXISTS shipping_addresses (
-		user_id TEXT PRIMARY KEY,
-		address TEXT NOT NULL
-	);
-	`
-
 	CreateTransactionLogTable = `
 	CREATE TABLE IF NOT EXISTS transaction_log (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -56,7 +49,6 @@ const (
 		item_id TEXT,
 		quantity INTEGER,
 		amount REAL,
-		shipping_address TEXT,
 		created_at TEXT NOT NULL DEFAULT (datetime('now')),
 		updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 	);
@@ -99,7 +91,6 @@ func (d *DB) InitSchema(ctx context.Context) error {
 	tables := []string{
 		CreateInventoryTable,
 		CreatePaymentAccountsTable,
-		CreateShippingAddressesTable,
 		CreateTransactionLogTable,
 		CreateCoordinatorTransactionsTable,
 		CreateIdempotencyKeysTable,
