@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"time"
 )
 
 type TransactionState string
@@ -24,8 +23,8 @@ type TransactionLog struct {
 	Participant   string
 	State         TransactionState
 	Payload       string
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	CreatedAt     string
+	UpdatedAt     string
 }
 
 func (d *DB) CreateTransactionLog(ctx context.Context, tx *sql.Tx, log *TransactionLog) error {

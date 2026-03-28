@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc"
 )
 
-func RunParticipant(dbPath, participantType string, port int) error {
+func RunParticipant(dbPath, participantType string, port int, seed bool) error {
 	database, err := db.InitDB(dbPath)
 	if err != nil {
 		return fmt.Errorf("failed to init database: %w", err)
@@ -22,6 +22,13 @@ func RunParticipant(dbPath, participantType string, port int) error {
 	ctx := context.Background()
 	if err := database.InitSchema(ctx); err != nil {
 		return fmt.Errorf("failed to init schema: %w", err)
+	}
+
+	if seed {
+		if err := seedParticipant(ctx, database, participantType); err != nil {
+			return fmt.Errorf("failed to seed: %w", err)
+		}
+		fmt.Printf("Seeded %s data\n", participantType)
 	}
 
 	var pType participant.ParticipantType
@@ -48,4 +55,19 @@ func RunParticipant(dbPath, participantType string, port int) error {
 
 	fmt.Printf("%s participant starting on port %d\n", participantType, port)
 	return grpcServer.Serve(lis)
+}
+
+func seedParticipant(ctx context.Context, database *db.DB, participantType string) error {
+	seedData := db.DefaultSeedData()
+
+	switch participantType {
+	case "inventory":
+		return database.SeedInventory(ctx, seedData.Inventory)
+	case "payment":
+		return database.SeedPaymentAccounts(ctx, seedData.PaymentAccounts)
+	case "shipping":
+		return database.SeedShippingAddresses(ctx, seedData.ShippingAddresses)
+	default:
+		return fmt.Errorf("unknown participant type: %s", participantType)
+	}
 }

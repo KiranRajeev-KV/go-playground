@@ -3,6 +3,7 @@ package coordinator
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -133,14 +134,19 @@ type PrepareResult struct {
 
 // ExecuteTwoPhaseCommit runs the full 2PC protocol for a transaction.
 func (s *CoordinatorService) ExecuteTwoPhaseCommit(ctx context.Context, tx *CoordinatorTransaction) (CoordinatorState, error) {
+	fmt.Printf("[Coordinator] Starting 2PC for transaction %s\n", tx.TransactionID)
+
 	s.store.UpdateState(tx.TransactionID, StatePreparing)
 
 	results, err := s.sendPrepareToAll(ctx, tx)
 	if err != nil {
+		fmt.Printf("[Coordinator] Prepare failed with error: %v\n", err)
 		s.store.UpdateState(tx.TransactionID, StateAborted)
 		s.sendAbortToAll(tx.TransactionID)
 		return StateAborted, err
 	}
+
+	fmt.Printf("[Coordinator] Prepare results: %+v\n", results)
 
 	for _, result := range results {
 		tx.Votes = append(tx.Votes, ParticipantVote(result))
@@ -148,6 +154,7 @@ func (s *CoordinatorService) ExecuteTwoPhaseCommit(ctx context.Context, tx *Coor
 
 	for _, result := range results {
 		if !result.VoteYes {
+			fmt.Printf("[Coordinator] Vote NO from %s: %s\n", result.Participant, result.Reason)
 			s.store.UpdateState(tx.TransactionID, StateAborted)
 			s.sendAbortToAll(tx.TransactionID)
 			return StateAborted, nil
@@ -156,8 +163,10 @@ func (s *CoordinatorService) ExecuteTwoPhaseCommit(ctx context.Context, tx *Coor
 
 	s.store.UpdateState(tx.TransactionID, StateCommitting)
 
+	fmt.Printf("[Coordinator] Sending commit to all participants\n")
 	err = s.sendCommitToAll(ctx, tx.TransactionID)
 	if err != nil {
+		fmt.Printf("[Coordinator] Commit failed with error: %v\n", err)
 		s.store.UpdateState(tx.TransactionID, StateAborted)
 		return StateAborted, err
 	}
@@ -189,6 +198,7 @@ func (s *CoordinatorService) sendPrepareToAll(ctx context.Context, tx *Coordinat
 
 // sendPrepare sends a prepare request to a specific participant.
 func (s *CoordinatorService) sendPrepare(ctx context.Context, participant string, tx *CoordinatorTransaction) (PrepareResult, error) {
+	fmt.Printf("[Coordinator] Sending prepare to %s\n", participant)
 	client, ok := s.participantClients[participant]
 	if !ok {
 		return PrepareResult{Participant: participant, VoteYes: false, Reason: "no client"}, errors.New("no client for participant")
