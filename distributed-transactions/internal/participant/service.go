@@ -56,9 +56,9 @@ func (s *ParticipantServer) Prepare(ctx context.Context, req *pb.PrepareRequest)
 
 	switch s.participant {
 	case ParticipantInventory:
-		voteYes, reason = s.prepareInventory(ctx, tx, req)
+		voteYes, reason = s.prepareInventory(ctx, req)
 	case ParticipantPayment:
-		voteYes, reason = s.preparePayment(ctx, tx, req)
+		voteYes, reason = s.preparePayment(ctx, req)
 	case ParticipantShipping:
 		voteYes, reason = s.prepareShipping(ctx, req)
 	}
@@ -101,7 +101,7 @@ func (s *ParticipantServer) Prepare(ctx context.Context, req *pb.PrepareRequest)
 }
 
 // prepareInventory validates that sufficient inventory exists for the order.
-func (s *ParticipantServer) prepareInventory(ctx context.Context, _ *sql.Tx, req *pb.PrepareRequest) (bool, string) {
+func (s *ParticipantServer) prepareInventory(ctx context.Context, req *pb.PrepareRequest) (bool, string) {
 	inv, ok := req.Payload.(*pb.PrepareRequest_Inventory)
 	if !ok {
 		return false, "invalid payload type for inventory"
@@ -123,7 +123,7 @@ func (s *ParticipantServer) prepareInventory(ctx context.Context, _ *sql.Tx, req
 }
 
 // preparePayment validates that the payment account has sufficient balance.
-func (s *ParticipantServer) preparePayment(ctx context.Context, _ *sql.Tx, req *pb.PrepareRequest) (bool, string) {
+func (s *ParticipantServer) preparePayment(ctx context.Context, req *pb.PrepareRequest) (bool, string) {
 	pay, ok := req.Payload.(*pb.PrepareRequest_Payment)
 	if !ok {
 		return false, "invalid payload type for payment"
