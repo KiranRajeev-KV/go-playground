@@ -24,16 +24,16 @@ type PaymentAccount struct {
 func DefaultSeedData() SeedData {
 	return SeedData{
 		Inventory: []InventoryItem{
-			{ItemID: "laptop-001", Name: "MacBook Pro 14", Quantity: 10, Price: 1999.99},
-			{ItemID: "phone-001", Name: "iPhone 15 Pro", Quantity: 25, Price: 999.99},
-			{ItemID: "tablet-001", Name: "iPad Pro 12.9", Quantity: 15, Price: 1099.99},
-			{ItemID: "watch-001", Name: "Apple Watch Ultra", Quantity: 30, Price: 799.99},
-			{ItemID: "earbuds-001", Name: "AirPods Pro 2", Quantity: 50, Price: 249.99},
+			{ItemID: "laptop-001", Name: "MacBook Pro 14", Quantity: 1_000_000_000, Price: 1999.99},
+			{ItemID: "phone-001", Name: "iPhone 15 Pro", Quantity: 1_000_000_000, Price: 999.99},
+			{ItemID: "tablet-001", Name: "iPad Pro 12.9", Quantity: 1_000_000_000, Price: 1099.99},
+			{ItemID: "watch-001", Name: "Apple Watch Ultra", Quantity: 1_000_000_000, Price: 799.99},
+			{ItemID: "earbuds-001", Name: "AirPods Pro 2", Quantity: 1_000_000_000, Price: 249.99},
 		},
 		PaymentAccounts: []PaymentAccount{
-			{UserID: "user-001", Balance: 5000.00},
-			{UserID: "user-002", Balance: 3000.00},
-			{UserID: "user-003", Balance: 10000.00},
+			{UserID: "user-001", Balance: 1_000_000_000_000.00},
+			{UserID: "user-002", Balance: 1_000_000_000_000.00},
+			{UserID: "user-003", Balance: 1_000_000_000_000.00},
 		},
 	}
 }

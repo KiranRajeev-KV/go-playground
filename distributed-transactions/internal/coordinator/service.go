@@ -124,6 +124,16 @@ func (s *CoordinatorServer) GetOrderStatus(ctx context.Context, req *pb.OrderSta
 	}, nil
 }
 
+// GetChaosStats returns chaos injection statistics.
+func (s *CoordinatorServer) GetChaosStats(ctx context.Context, req *pb.ChaosStatsRequest) (*pb.ChaosStatsResponse, error) {
+	drops, delays, phantoms := s.service.GetChaosStats()
+	return &pb.ChaosStatsResponse{
+		Drops:    drops,
+		Delays:   delays,
+		Phantoms: phantoms,
+	}, nil
+}
+
 // CreateParticipantClients creates gRPC clients for all participant services.
 func CreateParticipantClients(inventoryAddr, paymentAddr string) (map[string]pb.TransactionParticipantClient, error) {
 	clients := make(map[string]pb.TransactionParticipantClient)

@@ -5,7 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math/rand"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"distributed-transactions/internal/db"
@@ -119,12 +122,17 @@ type CoordinatorService struct {
 	EnableRecovery     bool
 	CommitTimeout      time.Duration
 	Protocol           string
+	Chaos              string
 
 	Participants []string
+
+	chaosDrops    atomic.Int64
+	chaosDelays   atomic.Int64
+	chaosPhantoms atomic.Int64
 }
 
 // NewCoordinatorService creates a new coordinator service.
-func NewCoordinatorService(database *db.DB, clients map[string]pb.TransactionParticipantClient, recover bool, commitTimeout time.Duration, protocol string) *CoordinatorService {
+func NewCoordinatorService(database *db.DB, clients map[string]pb.TransactionParticipantClient, recover bool, commitTimeout time.Duration, protocol string, chaos string) *CoordinatorService {
 	return &CoordinatorService{
 		db:                 database,
 		store:              NewTransactionStore(),
@@ -132,6 +140,7 @@ func NewCoordinatorService(database *db.DB, clients map[string]pb.TransactionPar
 		EnableRecovery:     recover,
 		CommitTimeout:      commitTimeout,
 		Protocol:           protocol,
+		Chaos:              chaos,
 		Participants:       []string{"inventory", "payment"},
 	}
 }
@@ -217,6 +226,7 @@ func (s *CoordinatorService) sendPrepare(ctx context.Context, participant string
 
 	messageID := fmt.Sprintf("%s-%s-prepare", tx.TransactionID, participant)
 	ctx = middleware.WithMessageID(ctx, messageID)
+	ctx = s.injectChaosCtx(ctx, participant, "prepare")
 
 	var req *pb.PrepareRequest
 	switch participant {
@@ -266,6 +276,7 @@ func (s *CoordinatorService) sendCommitToAll(ctx context.Context, transactionID 
 			}
 			messageID := fmt.Sprintf("%s-%s-commit", transactionID, participant)
 			reqCtx := middleware.WithMessageID(ctx, messageID)
+			reqCtx = s.injectChaosCtx(reqCtx, participant, "commit")
 			_, err := client.Commit(reqCtx, &pb.CommitRequest{
 				TransactionId: transactionID,
 			})
@@ -288,6 +299,7 @@ func (s *CoordinatorService) sendAbortToAll(transactionID string) {
 			}
 			messageID := fmt.Sprintf("%s-%s-abort", transactionID, participant)
 			reqCtx := middleware.WithMessageID(ctx, messageID)
+			reqCtx = s.injectChaosCtx(reqCtx, participant, "abort")
 			_, err := client.Abort(reqCtx, &pb.AbortRequest{
 				TransactionId: transactionID,
 			})
@@ -476,6 +488,7 @@ func (s *CoordinatorService) sendCanCommit(ctx context.Context, participant stri
 
 	messageID := fmt.Sprintf("%s-%s-cancheck", tx.TransactionID, participant)
 	ctx = middleware.WithMessageID(ctx, messageID)
+	ctx = s.injectChaosCtx(ctx, participant, "cancommit")
 
 	var req *pb.CanCommitRequest
 	switch participant {
@@ -525,6 +538,7 @@ func (s *CoordinatorService) sendPreCommitToAll(ctx context.Context, transaction
 			}
 			messageID := fmt.Sprintf("%s-%s-precommit", transactionID, participant)
 			reqCtx := middleware.WithMessageID(ctx, messageID)
+			reqCtx = s.injectChaosCtx(reqCtx, participant, "precommit")
 			_, err := client.PreCommit(reqCtx, &pb.PreCommitRequest{TransactionId: transactionID})
 			return err
 		})
@@ -545,10 +559,86 @@ func (s *CoordinatorService) sendDoCommitToAll(ctx context.Context, transactionI
 			}
 			messageID := fmt.Sprintf("%s-%s-docommit", transactionID, participant)
 			reqCtx := middleware.WithMessageID(ctx, messageID)
+			reqCtx = s.injectChaosCtx(reqCtx, participant, "docommit")
 			_, err := client.DoCommit(reqCtx, &pb.DoCommitRequest{TransactionId: transactionID})
 			return err
 		})
 	}
 
 	return g.Wait()
+}
+
+func (s *CoordinatorService) injectChaosCtx(ctx context.Context, participant, phase string) context.Context {
+	if s.Chaos == "" || s.Chaos == "none" {
+		return ctx
+	}
+
+	config, err := middleware.ParseChaosHeader(s.Chaos, 5*time.Second)
+	if err != nil {
+		log.Printf("[Chaos] Failed to parse chaos header: %v", err)
+		return ctx
+	}
+	if config == nil {
+		return ctx
+	}
+
+	if config.TargetService != participant && config.TargetService != "all" {
+		return ctx
+	}
+
+	if !s.phaseMatches(phase, config.Phase) {
+		return ctx
+	}
+
+	roll := rand.Intn(100) + 1
+	if roll > config.Probability {
+		return ctx
+	}
+
+	chaosValue := fmt.Sprintf("%s-%s-%s", config.TargetService, config.Action, config.Phase)
+	ctx = middleware.WithChaos(ctx, chaosValue)
+
+	switch config.Action {
+	case middleware.ChaosActionDrop:
+		s.chaosDrops.Add(1)
+		log.Printf("[Chaos] INJECT DROP on %s at %s (roll=%d <= %d%%)", participant, phase, roll, config.Probability)
+	case middleware.ChaosActionDelay:
+		s.chaosDelays.Add(1)
+		log.Printf("[Chaos] INJECT DELAY on %s at %s (roll=%d <= %d%%)", participant, phase, roll, config.Probability)
+	case middleware.ChaosActionPhantom:
+		s.chaosPhantoms.Add(1)
+		log.Printf("[Chaos] INJECT PHANTOM on %s at %s (roll=%d <= %d%%)", participant, phase, roll, config.Probability)
+	}
+
+	return ctx
+}
+
+func (s *CoordinatorService) phaseMatches(callPhase, targetPhase string) bool {
+	callPhase = strings.ToLower(callPhase)
+	targetPhase = strings.ToLower(targetPhase)
+
+	phaseMap := map[string][]string{
+		"prepare":   {"prepare", "voting"},
+		"commit":    {"commit", "commit-phase"},
+		"abort":     {"abort"},
+		"cancommit": {"cancheck", "cancommit", "can-commit"},
+		"precommit": {"precommit", "pre-commit"},
+		"docommit":  {"docommit", "do-commit", "commit"},
+	}
+
+	aliases, ok := phaseMap[callPhase]
+	if !ok {
+		return callPhase == targetPhase
+	}
+
+	for _, alias := range aliases {
+		if alias == targetPhase {
+			return true
+		}
+	}
+	return callPhase == targetPhase
+}
+
+func (s *CoordinatorService) GetChaosStats() (drops, delays, phantoms int64) {
+	return s.chaosDrops.Load(), s.chaosDelays.Load(), s.chaosPhantoms.Load()
 }

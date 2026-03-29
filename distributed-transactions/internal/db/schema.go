@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	_ "modernc.org/sqlite"
 )
@@ -82,6 +83,16 @@ func InitDB(path string) (*DB, error) {
 
 	if err := db.Ping(); err != nil {
 		return nil, err
+	}
+
+	_, err = db.Exec("PRAGMA journal_mode=WAL")
+	if err != nil {
+		return nil, fmt.Errorf("failed to enable WAL mode: %w", err)
+	}
+
+	_, err = db.Exec("PRAGMA busy_timeout=5000")
+	if err != nil {
+		return nil, fmt.Errorf("failed to set busy timeout: %w", err)
 	}
 
 	return &DB{db}, nil

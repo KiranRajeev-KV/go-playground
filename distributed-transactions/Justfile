@@ -18,19 +18,31 @@ proto:
            transaction.proto
 
 build:
-    {{BIN}} -mode=coordinator -db=coordinator.db
+    go build -o {{BIN}} .
+
+run-coordinator:
+    ./{{BIN}} -mode=coordinator -db=coordinator.db
 
 run-inventory:
-    {{BIN}} -mode=inventory -db=inventory.db -seed
+    ./{{BIN}} -mode=inventory -db=inventory.db -seed
 
 run-payment:
-    {{BIN}} -mode=payment -db=payment.db -seed
+    ./{{BIN}} -mode=payment -db=payment.db -seed
+
+run-participants: build
+    ./{{BIN}} -mode=inventory -db=inventory.db -seed &
+    ./{{BIN}} -mode=payment -db=payment.db -seed &
 
 run-all: build
-    @echo "Starting all services..."
-    {{BIN}} -mode=coordinator -db=coordinator.db &
-    {{BIN}} -mode=inventory -db=inventory.db -seed &
-    {{BIN}} -mode=payment -db=payment.db -seed &
+    ./{{BIN}} -mode=coordinator -db=coordinator.db &
+    ./{{BIN}} -mode=inventory -db=inventory.db -seed &
+    ./{{BIN}} -mode=payment -db=payment.db -seed &
+
+run-client:
+    ./{{BIN}} -mode=client -coordinator-addr=localhost:50051 -tps=50 -duration=60s
+
+run-benchmark:
+    ./{{BIN}} -mode=client -tps=100 -duration=30s -warmup=5s
 
 clean-data:
     rm -f *.db

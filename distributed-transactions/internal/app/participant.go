@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc"
 )
 
-func RunParticipant(dbPath, participantType string, port int, seed bool, recover bool, commitTimeout time.Duration, idempotencyTTL time.Duration) error {
+func RunParticipant(dbPath, participantType string, port int, seed bool, recover bool, commitTimeout time.Duration, idempotencyTTL time.Duration, chaos string, chaosDelayDuration time.Duration) error {
 	database, err := db.InitDB(dbPath)
 	if err != nil {
 		return fmt.Errorf("failed to init database: %w", err)
@@ -55,8 +55,10 @@ func RunParticipant(dbPath, participantType string, port int, seed bool, recover
 	idempotencyStore := middleware.NewIdempotencyStore(database, idempotencyTTL)
 	idempotencyInterceptor := middleware.NewIdempotencyInterceptor(idempotencyStore, idempotencyTTL)
 
+	chaosInterceptor := middleware.NewChaosInterceptor(participantType, chaosDelayDuration)
+
 	grpcServer := grpc.NewServer(
-		grpc.UnaryInterceptor(idempotencyInterceptor.Unary()),
+		grpc.ChainUnaryInterceptor(chaosInterceptor.Unary(), idempotencyInterceptor.Unary()),
 	)
 	pb.RegisterTransactionParticipantServer(grpcServer, server)
 

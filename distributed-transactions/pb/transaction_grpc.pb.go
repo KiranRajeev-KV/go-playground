@@ -21,6 +21,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	TransactionCoordinator_SubmitOrder_FullMethodName    = "/pb.TransactionCoordinator/SubmitOrder"
 	TransactionCoordinator_GetOrderStatus_FullMethodName = "/pb.TransactionCoordinator/GetOrderStatus"
+	TransactionCoordinator_GetChaosStats_FullMethodName  = "/pb.TransactionCoordinator/GetChaosStats"
 )
 
 // TransactionCoordinatorClient is the client API for TransactionCoordinator service.
@@ -29,6 +30,7 @@ const (
 type TransactionCoordinatorClient interface {
 	SubmitOrder(ctx context.Context, in *SubmitOrderRequest, opts ...grpc.CallOption) (*SubmitOrderResponse, error)
 	GetOrderStatus(ctx context.Context, in *OrderStatusRequest, opts ...grpc.CallOption) (*OrderStatusResponse, error)
+	GetChaosStats(ctx context.Context, in *ChaosStatsRequest, opts ...grpc.CallOption) (*ChaosStatsResponse, error)
 }
 
 type transactionCoordinatorClient struct {
@@ -59,12 +61,23 @@ func (c *transactionCoordinatorClient) GetOrderStatus(ctx context.Context, in *O
 	return out, nil
 }
 
+func (c *transactionCoordinatorClient) GetChaosStats(ctx context.Context, in *ChaosStatsRequest, opts ...grpc.CallOption) (*ChaosStatsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ChaosStatsResponse)
+	err := c.cc.Invoke(ctx, TransactionCoordinator_GetChaosStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // TransactionCoordinatorServer is the server API for TransactionCoordinator service.
 // All implementations must embed UnimplementedTransactionCoordinatorServer
 // for forward compatibility.
 type TransactionCoordinatorServer interface {
 	SubmitOrder(context.Context, *SubmitOrderRequest) (*SubmitOrderResponse, error)
 	GetOrderStatus(context.Context, *OrderStatusRequest) (*OrderStatusResponse, error)
+	GetChaosStats(context.Context, *ChaosStatsRequest) (*ChaosStatsResponse, error)
 	mustEmbedUnimplementedTransactionCoordinatorServer()
 }
 
@@ -80,6 +93,9 @@ func (UnimplementedTransactionCoordinatorServer) SubmitOrder(context.Context, *S
 }
 func (UnimplementedTransactionCoordinatorServer) GetOrderStatus(context.Context, *OrderStatusRequest) (*OrderStatusResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetOrderStatus not implemented")
+}
+func (UnimplementedTransactionCoordinatorServer) GetChaosStats(context.Context, *ChaosStatsRequest) (*ChaosStatsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetChaosStats not implemented")
 }
 func (UnimplementedTransactionCoordinatorServer) mustEmbedUnimplementedTransactionCoordinatorServer() {
 }
@@ -139,6 +155,24 @@ func _TransactionCoordinator_GetOrderStatus_Handler(srv interface{}, ctx context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _TransactionCoordinator_GetChaosStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ChaosStatsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TransactionCoordinatorServer).GetChaosStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TransactionCoordinator_GetChaosStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TransactionCoordinatorServer).GetChaosStats(ctx, req.(*ChaosStatsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // TransactionCoordinator_ServiceDesc is the grpc.ServiceDesc for TransactionCoordinator service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -153,6 +187,10 @@ var TransactionCoordinator_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetOrderStatus",
 			Handler:    _TransactionCoordinator_GetOrderStatus_Handler,
+		},
+		{
+			MethodName: "GetChaosStats",
+			Handler:    _TransactionCoordinator_GetChaosStats_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

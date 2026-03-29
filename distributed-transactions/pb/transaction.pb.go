@@ -1130,6 +1130,103 @@ func (x *DoCommitResponse) GetSuccess() bool {
 	return false
 }
 
+// Chaos stats messages
+type ChaosStatsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ChaosStatsRequest) Reset() {
+	*x = ChaosStatsRequest{}
+	mi := &file_transaction_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ChaosStatsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ChaosStatsRequest) ProtoMessage() {}
+
+func (x *ChaosStatsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_transaction_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ChaosStatsRequest.ProtoReflect.Descriptor instead.
+func (*ChaosStatsRequest) Descriptor() ([]byte, []int) {
+	return file_transaction_proto_rawDescGZIP(), []int{20}
+}
+
+type ChaosStatsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Drops         int64                  `protobuf:"varint,1,opt,name=drops,proto3" json:"drops,omitempty"`
+	Delays        int64                  `protobuf:"varint,2,opt,name=delays,proto3" json:"delays,omitempty"`
+	Phantoms      int64                  `protobuf:"varint,3,opt,name=phantoms,proto3" json:"phantoms,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ChaosStatsResponse) Reset() {
+	*x = ChaosStatsResponse{}
+	mi := &file_transaction_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ChaosStatsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ChaosStatsResponse) ProtoMessage() {}
+
+func (x *ChaosStatsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_transaction_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ChaosStatsResponse.ProtoReflect.Descriptor instead.
+func (*ChaosStatsResponse) Descriptor() ([]byte, []int) {
+	return file_transaction_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *ChaosStatsResponse) GetDrops() int64 {
+	if x != nil {
+		return x.Drops
+	}
+	return 0
+}
+
+func (x *ChaosStatsResponse) GetDelays() int64 {
+	if x != nil {
+		return x.Delays
+	}
+	return 0
+}
+
+func (x *ChaosStatsResponse) GetPhantoms() int64 {
+	if x != nil {
+		return x.Phantoms
+	}
+	return 0
+}
+
 var File_transaction_proto protoreflect.FileDescriptor
 
 const file_transaction_proto_rawDesc = "" +
@@ -1198,10 +1295,16 @@ const file_transaction_proto_rawDesc = "" +
 	"\x0etransaction_id\x18\x01 \x01(\tR\rtransactionId\"S\n" +
 	"\x10DoCommitResponse\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\tR\rtransactionId\x12\x18\n" +
-	"\asuccess\x18\x02 \x01(\bR\asuccess2\x9b\x01\n" +
+	"\asuccess\x18\x02 \x01(\bR\asuccess\"\x13\n" +
+	"\x11ChaosStatsRequest\"^\n" +
+	"\x12ChaosStatsResponse\x12\x14\n" +
+	"\x05drops\x18\x01 \x01(\x03R\x05drops\x12\x16\n" +
+	"\x06delays\x18\x02 \x01(\x03R\x06delays\x12\x1a\n" +
+	"\bphantoms\x18\x03 \x01(\x03R\bphantoms2\xdb\x01\n" +
 	"\x16TransactionCoordinator\x12>\n" +
 	"\vSubmitOrder\x12\x16.pb.SubmitOrderRequest\x1a\x17.pb.SubmitOrderResponse\x12A\n" +
-	"\x0eGetOrderStatus\x12\x16.pb.OrderStatusRequest\x1a\x17.pb.OrderStatusResponse2\x8a\x03\n" +
+	"\x0eGetOrderStatus\x12\x16.pb.OrderStatusRequest\x1a\x17.pb.OrderStatusResponse\x12>\n" +
+	"\rGetChaosStats\x12\x15.pb.ChaosStatsRequest\x1a\x16.pb.ChaosStatsResponse2\x8a\x03\n" +
 	"\x16TransactionParticipant\x122\n" +
 	"\aPrepare\x12\x12.pb.PrepareRequest\x1a\x13.pb.PrepareResponse\x12/\n" +
 	"\x06Commit\x12\x11.pb.CommitRequest\x1a\x12.pb.CommitResponse\x12,\n" +
@@ -1223,7 +1326,7 @@ func file_transaction_proto_rawDescGZIP() []byte {
 	return file_transaction_proto_rawDescData
 }
 
-var file_transaction_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
+var file_transaction_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
 var file_transaction_proto_goTypes = []any{
 	(*SubmitOrderRequest)(nil),  // 0: pb.SubmitOrderRequest
 	(*SubmitOrderResponse)(nil), // 1: pb.SubmitOrderResponse
@@ -1245,6 +1348,8 @@ var file_transaction_proto_goTypes = []any{
 	(*PreCommitResponse)(nil),   // 17: pb.PreCommitResponse
 	(*DoCommitRequest)(nil),     // 18: pb.DoCommitRequest
 	(*DoCommitResponse)(nil),    // 19: pb.DoCommitResponse
+	(*ChaosStatsRequest)(nil),   // 20: pb.ChaosStatsRequest
+	(*ChaosStatsResponse)(nil),  // 21: pb.ChaosStatsResponse
 }
 var file_transaction_proto_depIdxs = []int32{
 	6,  // 0: pb.PrepareRequest.inventory:type_name -> pb.InventoryPayload
@@ -1253,24 +1358,26 @@ var file_transaction_proto_depIdxs = []int32{
 	7,  // 3: pb.CanCommitRequest.payment:type_name -> pb.PaymentPayload
 	0,  // 4: pb.TransactionCoordinator.SubmitOrder:input_type -> pb.SubmitOrderRequest
 	2,  // 5: pb.TransactionCoordinator.GetOrderStatus:input_type -> pb.OrderStatusRequest
-	4,  // 6: pb.TransactionParticipant.Prepare:input_type -> pb.PrepareRequest
-	8,  // 7: pb.TransactionParticipant.Commit:input_type -> pb.CommitRequest
-	10, // 8: pb.TransactionParticipant.Abort:input_type -> pb.AbortRequest
-	12, // 9: pb.TransactionParticipant.GetStatus:input_type -> pb.StatusRequest
-	14, // 10: pb.TransactionParticipant.CanCommit:input_type -> pb.CanCommitRequest
-	16, // 11: pb.TransactionParticipant.PreCommit:input_type -> pb.PreCommitRequest
-	18, // 12: pb.TransactionParticipant.DoCommit:input_type -> pb.DoCommitRequest
-	1,  // 13: pb.TransactionCoordinator.SubmitOrder:output_type -> pb.SubmitOrderResponse
-	3,  // 14: pb.TransactionCoordinator.GetOrderStatus:output_type -> pb.OrderStatusResponse
-	5,  // 15: pb.TransactionParticipant.Prepare:output_type -> pb.PrepareResponse
-	9,  // 16: pb.TransactionParticipant.Commit:output_type -> pb.CommitResponse
-	11, // 17: pb.TransactionParticipant.Abort:output_type -> pb.AbortResponse
-	13, // 18: pb.TransactionParticipant.GetStatus:output_type -> pb.StatusResponse
-	15, // 19: pb.TransactionParticipant.CanCommit:output_type -> pb.CanCommitResponse
-	17, // 20: pb.TransactionParticipant.PreCommit:output_type -> pb.PreCommitResponse
-	19, // 21: pb.TransactionParticipant.DoCommit:output_type -> pb.DoCommitResponse
-	13, // [13:22] is the sub-list for method output_type
-	4,  // [4:13] is the sub-list for method input_type
+	20, // 6: pb.TransactionCoordinator.GetChaosStats:input_type -> pb.ChaosStatsRequest
+	4,  // 7: pb.TransactionParticipant.Prepare:input_type -> pb.PrepareRequest
+	8,  // 8: pb.TransactionParticipant.Commit:input_type -> pb.CommitRequest
+	10, // 9: pb.TransactionParticipant.Abort:input_type -> pb.AbortRequest
+	12, // 10: pb.TransactionParticipant.GetStatus:input_type -> pb.StatusRequest
+	14, // 11: pb.TransactionParticipant.CanCommit:input_type -> pb.CanCommitRequest
+	16, // 12: pb.TransactionParticipant.PreCommit:input_type -> pb.PreCommitRequest
+	18, // 13: pb.TransactionParticipant.DoCommit:input_type -> pb.DoCommitRequest
+	1,  // 14: pb.TransactionCoordinator.SubmitOrder:output_type -> pb.SubmitOrderResponse
+	3,  // 15: pb.TransactionCoordinator.GetOrderStatus:output_type -> pb.OrderStatusResponse
+	21, // 16: pb.TransactionCoordinator.GetChaosStats:output_type -> pb.ChaosStatsResponse
+	5,  // 17: pb.TransactionParticipant.Prepare:output_type -> pb.PrepareResponse
+	9,  // 18: pb.TransactionParticipant.Commit:output_type -> pb.CommitResponse
+	11, // 19: pb.TransactionParticipant.Abort:output_type -> pb.AbortResponse
+	13, // 20: pb.TransactionParticipant.GetStatus:output_type -> pb.StatusResponse
+	15, // 21: pb.TransactionParticipant.CanCommit:output_type -> pb.CanCommitResponse
+	17, // 22: pb.TransactionParticipant.PreCommit:output_type -> pb.PreCommitResponse
+	19, // 23: pb.TransactionParticipant.DoCommit:output_type -> pb.DoCommitResponse
+	14, // [14:24] is the sub-list for method output_type
+	4,  // [4:14] is the sub-list for method input_type
 	4,  // [4:4] is the sub-list for extension type_name
 	4,  // [4:4] is the sub-list for extension extendee
 	0,  // [0:4] is the sub-list for field type_name
@@ -1295,7 +1402,7 @@ func file_transaction_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_transaction_proto_rawDesc), len(file_transaction_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   20,
+			NumMessages:   22,
 			NumExtensions: 0,
 			NumServices:   2,
 		},
