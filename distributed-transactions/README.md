@@ -37,62 +37,18 @@ just run-all
 ```
 
 ## Architecture
+<img width="1440" height="1736" alt="image" src="https://github.com/user-attachments/assets/46a49d34-7d31-4b22-a7fd-c1921da44930" />
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Coordinator                               │
-│                    (Order Service :50051)                        │
-│                                                                  │
-│  ┌─────────────────────────────────────────────────────────────┐│
-│  │  2PC: Prepare → Commit/Abort                               ││
-│  │  3PC: CanCommit → PreCommit → DoCommit                     ││
-│  └─────────────────────────────────────────────────────────────┘│
-└──────────────────────────┬──────────────────────────────────────┘
-                           │
-         ┌─────────────────┴─────────────────┐
-         │                                   │
-         ▼                                   ▼
-┌─────────────────────┐           ┌─────────────────────┐
-│   Inventory         │           │     Payment         │
-│  Service (:50052)   │           │   Service (:50053)  │
-│                     │           │                     │
-│  - Reserve items    │           │  - Charge user      │
-│  - Check stock      │           │  - Process payment  │
-└─────────────────────┘           └─────────────────────┘
-```
 
 ## Protocols
 
 ### Two-Phase Commit (2PC)
 
-```
-Coordinator          Participant
-    │                    │
-    │──── Prepare ──────>│  (Lock resources)
-    │<─── Vote YES/NO ── │
-    │                    │
-    ├──── All YES? ──────┤
-    │                    │
-    ├──── Yes: Commit ───┤
-    │     No: Abort ─────┤
-    │                    │
-    │<─── ACK ────────── │
-```
+<img width="1440" height="1398" alt="image" src="https://github.com/user-attachments/assets/9d6ea13d-d70a-4bce-bcc1-3b778e8ae7e5" />
 
 ### Three-Phase Commit (3PC)
 
-```
-Coordinator          Participant
-    │                    │
-    │─── CanCommit ────>│  (Check if can commit)
-    │<─── Yes/No ───────│
-    │                   │
-    │─── PreCommit ────>│  (Prepare to commit)
-    │<─── ACK ──────────│
-    │                   │
-    │─── DoCommit ─────>│  (Execute commit)
-    │<─── ACK ──────────│  (Optional - participant may commit anyway)
-```
+<img width="1440" height="1652" alt="image" src="https://github.com/user-attachments/assets/0da1664d-4ef2-4e75-98e3-5bbb8cd81bf8" />
 
 **3PC Advantage**: Once a participant reaches `PreCommit`, it will commit even if `DoCommit` is never received (amnesia-free recovery).
 
