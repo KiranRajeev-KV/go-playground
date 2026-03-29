@@ -70,6 +70,7 @@ just run-all
 | `-recover` | Run crash recovery on startup | `false` |
 | `-protocol` | Protocol: `2pc` or `3pc` | `2pc` |
 | `-chaos` | Chaos simulation config | (none) |
+| `-chaos-delay-duration` | Delay duration for chaos delay action | `15s` |
 
 ### Client Mode Flags
 
@@ -94,7 +95,8 @@ Chaos injection allows testing failure scenarios by modifying gRPC metadata sent
 |-----------|---------|
 | `target` | `inventory`, `payment`, `all` |
 | `action` | `drop`, `delay`, `phantom`, `log` |
-| `phase` | `prepare`, `commit`, `abort` (2PC) or `cancommit`, `precommit`, `docommit` (3PC) |
+| `phase` (2PC) | `prepare`, `commit`, `abort` |
+| `phase` (3PC) | `cancommit`, `precommit`, `docommit` |
 | `probability` | 1-100 (optional, default: 100) |
 
 ### Chaos Actions
@@ -106,37 +108,39 @@ Chaos injection allows testing failure scenarios by modifying gRPC metadata sent
 | `phantom` | Process request but drop response |
 | `log` | Log the chaos instruction, process normally |
 
-### Phase Aliases
-
-For convenience, phases can be referenced by aliases:
-
-| Phase | Aliases |
-|-------|---------|
-| `prepare` | `prepare`, `voting` |
-| `commit` | `commit`, `commit-phase` |
-| `cancommit` | `cancheck`, `cancommit`, `can-commit` |
-| `precommit` | `precommit`, `pre-commit` |
-| `docommit` | `docommit`, `do-commit`, `commit` |
+**Note:** Using `commit` as the phase name in 3PC matches `docommit` (e.g., `-chaos="all-drop-commit"` injects chaos on DoCommit calls). This is intentional for ergonomics but can cause confusion when switching between protocols.
 
 ### Examples
 
 ```bash
+# ===== 2PC Examples =====
 # Drop 20% of Prepare requests to inventory
 -chaos="inventory-drop-prepare:20"
 
 # Delay all commit phases on payment
 -chaos="payment-delay-commit"
 
-# Phantom failures on all participants at cancommit (3PC)
--chaos="all-phantom-cancommit:30"
+# Phantom failures on all participants at abort
+-chaos="all-phantom-abort:30"
 
-# Log (but don't inject) all aborts
--chaos="all-log-abort"
+# ===== 3PC Examples =====
+# Drop 10% at CanCommit phase (3PC)
+-chaos="inventory-drop-cancommit:10"
+
+# Delay PreCommit on all participants
+-chaos="all-delay-precommit"
+
+# Phantom failures at DoCommit (note: 3PC resilience means participant may commit anyway)
+-chaos="payment-phantom-docommit:20"
+
+# ===== 3PC — using commit alias for docommit =====
+-chaos="all-drop-commit"
 ```
 
 ## Benchmarking Results
 
-Tests run with: `TPS=50, Duration=10s, Warmup=2s`
+Tests run with: `TPS=50, Duration=10s, Warmup=2s, Chaos=10%`
+Environment: Local loopback (localhost) - no network latency
 
 ### 2PC Results
 
@@ -236,7 +240,7 @@ distributed-transactions/
 │   │   ├── service.go         # gRPC server implementation
 │   │   └── state.go           # 2PC/3PC state machines
 │   ├── participant/
-│   │   └── handlers.go        # Participant RPC handlers
+│   │   └── service.go        # Participant RPC handlers
 │   ├── db/
 │   │   └── schema.go          # SQLite schema & queries
 │   └── middleware/
@@ -252,3 +256,39 @@ distributed-transactions/
 - **Fan-Out/Fan-In**: Parallel requests to participants with errgroup
 - **Atomic Operations**: Sync-free coordination with atomic counters
 - **Embedded SQLite**: No external database dependencies
+
+## Known Simplifications
+
+This is a research/benchmark project with intentional simplifications:
+
+### 1. Fire-and-Forget Abort
+
+In `ExecuteTwoPhaseCommit`, when `sendPrepareToAll` returns an error (e.g., one participant times out), the coordinator calls `sendAbortToAll`. However, `sendAbortToAll` is a void function—it fires abort requests to all participants and logs results internally, but does not return an error to the caller. The coordinator proceeds to return `StateAborted` regardless of whether aborts succeeded.
+
+If an abort fails, the participant may remain in a prepared state until recovery runs. In production, you'd want retry logic or persistent abort tracking.
+
+### 2. 3PC Recovery Not Implemented
+
+The participant's `Recover()` function queries `GetPreparedTransactions()` (which filters for `StatePrepared`) and auto-aborts any timed-out transactions. This handles 2PC's prepared state correctly.
+
+However, if a participant crashes after `PreCommit` (3PC), it does **not** automatically commit on restart. The missing logic in `participant.Recover()` would be:
+
+```
+On recovery:
+  - If transaction is in db.StateCanCommit: should auto-abort (safe)
+  - If transaction is in db.StatePreCommit: should auto-commit (critical!)
+```
+
+A fully correct 3PC implementation would auto-commit for `db.StatePreCommit` transactions on recovery.
+
+### 3. Coordinator In-Memory State Not Reconstructed
+
+On startup, `coordinator.Recover()` queries participants via `GetStatus` and updates the database, but the in-memory `TransactionStore` is rebuilt empty. This means:
+
+- Transactions can recover to completion in the DB
+- But the coordinator can't serve `GetOrderStatus` queries for those transactions until they're re-executed
+- Acceptable for benchmarks; production would need persistent coordinator state
+
+### 4. DoCommit Response Optional (3PC Correct)
+
+3PC intentionally treats `DoCommit` responses as optional—once a participant receives `PreCommit`, it commits regardless of whether `DoCommit` arrives. The coordinator correctly returns "COMMITTED" even if `sendDoCommitToAll` returns an error, matching the protocol specification.
