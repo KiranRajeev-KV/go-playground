@@ -9,6 +9,8 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"rate-limiters/limiters"
 )
 
 // Any struct with the same function definition will satisfy this interface.
@@ -17,12 +19,7 @@ type Limiter interface {
 }
 
 // Decision represents the internal response for each Allow call.
-type Decision struct {
-	Allowed    bool
-	Remaining  int
-	RetryAfter time.Duration
-	Reason     string
-}
+type Decision = limiters.Decision
 
 // AlwaysAllowLimiter is a simple struct that allows all requests.
 type AlwaysAllowLimiter struct{}
@@ -168,13 +165,18 @@ func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
-	limiter := AlwaysDenyLimiter{}
+	limiter := limiters.NewFixedWindowCounter()
 	handler := NewHandler(limiter, logger)
 
 	mux := http.NewServeMux()
 	mux.Handle("/api/limited", handler)
 
-	logger.Info("starting server", "address", ":8080")
+	logger.Info("starting server",
+		"address", ":8080",
+		"algorithm", "fixed_window_counter",
+		"rate_limit_requests", limiters.FixedWindowCounterLimit,
+		"rate_limit_window_seconds", int(limiters.FixedWindowCounterWindow/time.Second),
+	)
 
 	err := http.ListenAndServe(":8080", mux)
 	if err != nil {
