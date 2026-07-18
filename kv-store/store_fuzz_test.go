@@ -49,7 +49,7 @@ func FuzzStoreSequentialOperations(f *testing.F) {
 		db := kvstore.New[byte, byte]()
 		model := make(map[byte]byte)
 
-		operationTotal := min(len(data) / bytesPerOperation, maxOperations)
+		operationTotal := min(len(data)/bytesPerOperation, maxOperations)
 
 		checkState := func(step int, operation string) {
 			t.Helper()
