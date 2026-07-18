@@ -294,17 +294,15 @@ Historically completed and present in the current implementation: one `sync.RWMu
 - Associated commit message recommendation: `test(store): fuzz snapshot`
 - Completed: 2026-07-18
 
-## Active Task
+### Task 35: Benchmark atomic mutation operations
 
-### Task 35: Benchmark Swap
-
-- Objective: Measure the steady-state cost of atomic replacement for an existing key.
-- Why this is next: `Swap` is a new public mutation primitive; a focused benchmark makes its lock-and-replacement cost observable alongside existing get/set benchmarks.
-- Required behavior: Add one sequential `BenchmarkSwap` that repeatedly swaps an already-present fixed key. Exclude one-time construction and initial insertion from the timed interval and report allocations.
-- Constraints: Do not measure missing-key insertion, map growth, setup, or unrelated work. The benchmark must use a stable key and call the operation once per timed iteration.
+- Objective: Measure the steady-state cost of atomic mutation operations on existing keys.
+- Why this is next: The learner expanded the related benchmark work to `Swap`, `LoadOrStore`, `Update`, `LoadAndDelete`, and `Delete`; these form one coherent performance group.
+- Required behavior: Each benchmark measures exactly one existing-key operation per timed iteration, with construction, insertion, re-population, and map allocation excluded as applicable. Every benchmark reports allocations.
+- Constraints: Do not measure missing-key behavior, map growth, setup, or unrelated work. Keep stable keys and deterministic setup.
 - Acceptance criteria:
-  - BenchmarkSwap measures one existing-key Swap per iteration.
-  - Setup is excluded and allocation metrics are reported.
+  - Swap, LoadOrStore, Update, LoadAndDelete, and Delete each measure their existing-key path.
+  - Setup is excluded and allocation metrics are reported by every benchmark.
   - Existing benchmarks remain unchanged.
   - Baseline and both fixed-duration and repeated benchmark commands pass.
 - Verification plan:
@@ -318,5 +316,17 @@ Historically completed and present in the current implementation: one `sync.RWMu
 - References:
   - https://pkg.go.dev/testing#B.Loop
   - https://go.dev/doc/diagnostics#profiling
+- Learner implementation summary: Added existing-key benchmarks for Swap, LoadOrStore, Update, LoadAndDelete, and Delete, with stopped-timer re-population for destructive operations.
+- Verification results: On 2026-07-18, tests, race detection, and vet passed. Fixed-duration results reported 0 B/op and 0 allocs/op for every benchmark; the repeated full suite completed successfully.
+- Associated commit message recommendation: `bench(store): benchmark atomic mutations`
+- Completed: 2026-07-18
+
+## Active Task
+
+### Task 36: Benchmark Len under sequential and parallel reads
+
+- Objective: Measure the store's point-in-time size query in single-threaded and parallel read scenarios.
+- Required behavior: Add sequential and parallel Len benchmarks against a pre-populated store, with setup excluded and allocations reported.
+- Acceptance criteria: Both benchmarks measure only Len; parallel setup remains outside RunParallel; fixed-duration and repeated suites pass.
+- Verification plan: `git diff --check`; `gofmt -l .`; `go test ./...`; `go test -race ./...`; `go vet ./...`; `go test -run='^$' -bench='Benchmark.*Len' -benchmem -benchtime=1s`; `go test -run='^$' -bench=. -benchmem -count=5`.
 - Status: Active.
-- Review notes: Benchmark the existing-key path deliberately. A missing-key swap has different lazy-initialization and insertion behavior, so combining both would produce an ambiguous result.

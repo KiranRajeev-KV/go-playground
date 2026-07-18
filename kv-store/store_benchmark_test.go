@@ -103,3 +103,102 @@ func BenchmarkClear(b *testing.B) {
 		})
 	}
 }
+
+func BenchmarkSwap(b *testing.B) {
+	b.ReportAllocs()
+
+	db := kvstore.New[int, int]()
+	db.Set(1, 10)
+
+	for b.Loop() {
+		db.Swap(1, 11)
+	}
+}
+
+func BenchmarkLoadOrStore(b *testing.B) {
+	b.ReportAllocs()
+
+	db := kvstore.New[int, int]()
+	db.Set(1, 10)
+
+	for b.Loop() {
+		db.LoadOrStore(1, 11)
+	}
+}
+
+func BenchmarkUpdate(b *testing.B) {
+	b.ReportAllocs()
+
+	db := kvstore.New[int, int]()
+	db.Set(1, 10)
+
+	update := func(value int) int {
+		return value + 1
+	}
+
+	for b.Loop() {
+		db.Update(1, update)
+	}
+}
+
+func BenchmarkLoadAndDelete(b *testing.B) {
+	b.ReportAllocs()
+
+	const batchSize = 1024
+
+	stores := make([]kvstore.Store[int, int], batchSize)
+
+	populate := func() {
+		for i := range stores {
+			stores[i].Set(1, 10)
+		}
+	}
+
+	// Initial construction and insertion are excluded by B.Loop.
+	populate()
+
+	next := 0
+
+	for b.Loop() {
+		if next == len(stores) {
+			b.StopTimer()
+			populate()
+			next = 0
+			b.StartTimer()
+		}
+
+		stores[next].LoadAndDelete(1)
+		next++
+	}
+}
+
+func BenchmarkDelete(b *testing.B) {
+	b.ReportAllocs()
+
+	const batchSize = 1024
+
+	stores := make([]kvstore.Store[int, int], batchSize)
+
+	populate := func() {
+		for i := range stores {
+			stores[i].Set(1, 10)
+		}
+	}
+
+	// Initial construction and insertion are excluded by B.Loop.
+	populate()
+
+	next := 0
+
+	for b.Loop() {
+		if next == len(stores) {
+			b.StopTimer()
+			populate()
+			next = 0
+			b.StartTimer()
+		}
+
+		stores[next].Delete(1)
+		next++
+	}
+}
