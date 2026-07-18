@@ -16,6 +16,8 @@ func FuzzStoreSequentialOperations(f *testing.F) {
 		swapOperation
 		loadOrStoreOperation
 		updateOperation
+		snapshotOperation
+		lenOperation
 	)
 
 	// Set(1, 10), Get(1), Delete(1), Get(1 missing).
@@ -61,11 +63,22 @@ func FuzzStoreSequentialOperations(f *testing.F) {
 		updateOperation, 11, 110,
 	})
 
+	// Snapshot a non-empty store, then continue mutating and checking Len.
+	f.Add([]byte{
+		setOperation, 12, 120,
+		setOperation, 13, 130,
+		snapshotOperation, 0, 0,
+		updateOperation, 12, 121,
+		lenOperation, 0, 0,
+		deleteOperation, 13, 0,
+		snapshotOperation, 0, 0,
+	})
+
 	f.Fuzz(func(t *testing.T, data []byte) {
 		const (
 			bytesPerOperation = 3
 			maxOperations     = 64
-			operationCount    = 8
+			operationCount    = 10
 		)
 
 		db := kvstore.New[byte, byte]()
@@ -370,6 +383,59 @@ func FuzzStoreSequentialOperations(f *testing.F) {
 				}
 
 				checkState(step, "Update")
+
+			case snapshotOperation:
+				snapshot := db.Snapshot()
+
+				if got, want := len(snapshot), len(model); got != want {
+					t.Fatalf(
+						"step %d: len(Snapshot()) = %d, want %d",
+						step,
+						got,
+						want,
+					)
+				}
+
+				for candidate := 0; candidate <= 255; candidate++ {
+					key := byte(candidate)
+
+					got, gotExists := snapshot[key]
+					want, wantExists := model[key]
+
+					if gotExists != wantExists {
+						t.Fatalf(
+							"step %d: Snapshot() key %d presence = %v, want %v",
+							step,
+							key,
+							gotExists,
+							wantExists,
+						)
+					}
+
+					if wantExists && got != want {
+						t.Fatalf(
+							"step %d: Snapshot()[%d] = %d, want %d",
+							step,
+							key,
+							got,
+							want,
+						)
+					}
+				}
+
+				checkState(step, "Snapshot")
+
+			case lenOperation:
+				if got, want := db.Len(), len(model); got != want {
+					t.Fatalf(
+						"step %d: Len() = %d, want %d",
+						step,
+						got,
+						want,
+					)
+				}
+
+				checkState(step, "Len")
 			}
 		}
 	})

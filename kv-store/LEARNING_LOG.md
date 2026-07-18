@@ -278,30 +278,45 @@ Historically completed and present in the current implementation: one `sync.RWMu
 - Associated commit message recommendation: `test(store): fuzz update`
 - Completed: 2026-07-18
 
-## Active Task
-
 ### Task 34: Extend the fuzz model with Snapshot
 
 - Objective: Exercise shallow map snapshots in generated sequential operation sequences.
-- Why this is next: `Snapshot` is the remaining public operation not explicitly invoked by the model fuzzer.
-- Required behavior: Add a `Snapshot` operation encoding that compares the returned map's length and every byte-key/value entry to the model. Add a seed that snapshots a non-empty state and then continues with mutation to preserve sequence coverage.
-- Constraints: Do not mutate the returned snapshot in this task, change production code, existing encodings, input bounds, or sequential execution. Avoid map-order assumptions by comparing by key.
+- Why it was selected: `Snapshot` was not explicitly invoked by the model fuzzer.
+- Required behavior: The target compares snapshot length and all byte-key/value entries to the model.
+- Constraints: Production code, bounds, and sequential execution remain unchanged; comparison is order independent and does not mutate returned snapshots.
+- Acceptance criteria: Snapshot operation and non-empty seed are present; complete map equivalence is checked; baseline and fuzz validation pass.
+- Learner implementation summary: Added Snapshot and Len operation encodings, non-empty snapshot seed, and byte-keyspace snapshot equivalence checks.
+- Codex-maintained changes: `LEARNING_LOG.md` records the completed task; no other maintenance was required.
+- Verification commands: `git diff --check`; `gofmt -l .`; `go test ./...`; `go test -race ./...`; `go vet ./...`; `go test -run='^$' -fuzz=FuzzStoreSequentialOperations -fuzztime=5s`.
+- Verification results: On 2026-07-18, diff and formatting checks passed. Tests, race detection, and vet passed. The fuzz target ran 740,966 inputs in five seconds without failures.
+- Important lesson: Map equivalence tests must compare by key rather than range order.
+- References: https://go.dev/doc/security/fuzz ; https://pkg.go.dev/maps#Equal
+- Associated commit message recommendation: `test(store): fuzz snapshot`
+- Completed: 2026-07-18
+
+## Active Task
+
+### Task 35: Benchmark Swap
+
+- Objective: Measure the steady-state cost of atomic replacement for an existing key.
+- Why this is next: `Swap` is a new public mutation primitive; a focused benchmark makes its lock-and-replacement cost observable alongside existing get/set benchmarks.
+- Required behavior: Add one sequential `BenchmarkSwap` that repeatedly swaps an already-present fixed key. Exclude one-time construction and initial insertion from the timed interval and report allocations.
+- Constraints: Do not measure missing-key insertion, map growth, setup, or unrelated work. The benchmark must use a stable key and call the operation once per timed iteration.
 - Acceptance criteria:
-  - The fuzz operation set includes `Snapshot`.
-  - A seed covers missing and existing paths.
-  - Every fuzzed snapshot checks complete map equivalence with the model.
-  - Existing fuzz operations and checks remain intact.
-  - Ordinary tests, race detection, vet, and a five-second fuzz run pass.
+  - BenchmarkSwap measures one existing-key Swap per iteration.
+  - Setup is excluded and allocation metrics are reported.
+  - Existing benchmarks remain unchanged.
+  - Baseline and both fixed-duration and repeated benchmark commands pass.
 - Verification plan:
   - `git diff --check`
   - `gofmt -l .`
   - `go test ./...`
   - `go test -race ./...`
   - `go vet ./...`
-  - `go test -run='^$' -fuzz=FuzzStoreSequentialOperations -fuzztime=5s`
+  - `go test -run='^$' -bench='^BenchmarkSwap$' -benchmem -benchtime=1s`
+  - `go test -run='^$' -bench=. -benchmem -count=5`
 - References:
-  - https://go.dev/doc/security/fuzz
-  - https://pkg.go.dev/maps#Equal
-  - https://pkg.go.dev/testing#F
+  - https://pkg.go.dev/testing#B.Loop
+  - https://go.dev/doc/diagnostics#profiling
 - Status: Active.
-- Review notes: Snapshot is shallow, but byte values are scalars. This task validates map-entry equivalence only; it does not introduce concurrent mutation or aliasing checks.
+- Review notes: Benchmark the existing-key path deliberately. A missing-key swap has different lazy-initialization and insertion behavior, so combining both would produce an ambiguous result.
