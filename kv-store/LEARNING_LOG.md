@@ -214,28 +214,62 @@ Historically completed and present in the current implementation: one `sync.RWMu
 - Associated commit message recommendation: `test(store): fuzz load and delete`
 - Completed: 2026-07-18
 
-## Active Task
-
 ### Task 30: Add an atomic Swap operation
 
 - Objective: Add an atomic replacement primitive that returns the previous value without a caller-side read-then-write race.
-- Why this is next: The store now has atomic insertion, removal, and read-removal primitives. `Swap` is their natural write-side complement and maps cleanly to a generic value type.
-- Required behavior: Add an exported `Swap` method that stores its supplied value and returns the previous value plus a boolean indicating whether the key was already present. For a missing key, it stores the new value and returns the zero value of `V` with `loaded == false`; for an existing key, it returns the old value with `loaded == true`.
-- Constraints: Use the exclusive lock and existing lazy map initialization. Do not compose public methods, add errors, goroutines, counters, or value comparisons. Preserve shallow value ownership and zero-value usability.
+- Why it was selected: `Swap` is the natural write-side complement to the existing atomic insertion, removal, and read-removal primitives.
+- Required behavior: `Swap` stores its supplied value and returns the previous value plus prior key presence; missing keys return zero and false while being inserted.
+- Constraints: It uses the exclusive lock and lazy initialization, adds no errors or goroutines, and preserves shallow ownership and zero-value usability.
+- Acceptance criteria: External tests cover missing, existing, zero-value, zero stored value, and concurrent same-key cases; only one concurrent call is the initial insertion; baseline checks pass.
+- Learner implementation summary: Added the exclusive-lock `Swap` method and external tests for all contract paths, including a concurrent value-chain invariant.
+- Codex-maintained changes: `store.go` gained the comment-only `Swap` contract; `README.md` lists `Swap`; `go fmt ./...` made no reported formatting changes.
+- Verification commands: `git diff --check`; `gofmt -l .`; `go test ./...`; `go test -race ./...`; `go vet ./...`.
+- Verification results: On 2026-07-18, diff and formatting checks passed. Regular tests and race tests passed, and vet completed successfully with no reported issues.
+- Important lesson: The value returned by an atomic swap must be paired with a presence boolean; zero values alone cannot tell callers whether a key existed.
+- References: https://pkg.go.dev/sync#Map.Swap ; https://pkg.go.dev/sync#RWMutex.Lock ; https://go.dev/ref/mem
+- Associated commit message recommendation: `feat(store): add atomic swap`
+- Completed: 2026-07-18
+
+### Task 31: Extend the fuzz model with Swap
+
+- Objective: Keep the model-based fuzz oracle aligned with the latest atomic mutation operation.
+- Why it was selected: `Swap` required sequence coverage alongside the existing operations.
+- Required behavior: The fuzz target compares `Swap`'s previous value and presence boolean to the map model, then updates the model and checks full state.
+- Constraints: Production code, existing encodings, bounds, and sequential execution remain unchanged; model presence is evaluated before assignment.
+- Acceptance criteria: The operation and a missing/existing seed are present; every step checks return values and state; baseline and five-second fuzz checks pass.
+- Learner implementation summary: Added the `Swap` operation, seed, model comparison, state update, and target coverage.
+- Codex-maintained changes: `LEARNING_LOG.md` records the completed task; no other maintenance was needed.
+- Verification commands: `git diff --check`; `gofmt -l .`; `go test ./...`; `go test -race ./...`; `go vet ./...`; `go test -run='^$' -fuzz=FuzzStoreSequentialOperations -fuzztime=5s`.
+- Verification results: On 2026-07-18, diff and formatting checks passed. Tests, race detection, and vet passed. The fuzz target ran 1,299,182 inputs in five seconds without failures.
+- Important lesson: An atomic write operation's return values describe state before its write, so model comparison must precede model assignment.
+- References: https://go.dev/doc/security/fuzz ; https://pkg.go.dev/sync#Map.Swap
+- Associated commit message recommendation: `test(store): fuzz swap`
+- Completed: 2026-07-18
+
+## Active Task
+
+### Task 32: Extend the fuzz model with LoadOrStore
+
+- Objective: Keep the model-based fuzz oracle aligned with the atomic first-writer-wins operation.
+- Why this is next: `LoadOrStore` is a public atomic mutation primitive but is not yet represented in generated operation sequences.
+- Required behavior: Add one `LoadOrStore` operation encoding. Compare returned value and `loaded` with the map model; only insert the generated value into the model when the key was absent; then run the full state check. Add a seed covering missing and existing paths.
+- Constraints: Do not change production code, prior encodings, input bounds, or sequential execution. Evaluate model presence before the call; the returned boolean reports whether an existing value was loaded.
 - Acceptance criteria:
-  - External tests cover insert-on-missing, replacement-on-existing, and zero-value stores.
-  - Returned boolean represents prior presence independently of the returned value.
-  - A concurrent same-key test verifies exactly one initial insertion and that all calls complete without races; it must not assume a value order beyond the atomic contract.
-  - Existing behavior remains unchanged and baseline checks pass.
+  - The fuzz operation set includes `LoadOrStore`.
+  - A seed covers missing and existing paths.
+  - Every fuzzed call checks returned value, loaded boolean, and updated model state.
+  - Existing fuzz operations and checks remain intact.
+  - Ordinary tests, race detection, vet, and a five-second fuzz run pass.
 - Verification plan:
   - `git diff --check`
   - `gofmt -l .`
   - `go test ./...`
   - `go test -race ./...`
   - `go vet ./...`
+  - `go test -run='^$' -fuzz=FuzzStoreSequentialOperations -fuzztime=5s`
 - References:
-  - https://pkg.go.dev/sync#Map.Swap
-  - https://pkg.go.dev/sync#RWMutex.Lock
-  - https://go.dev/ref/mem
+  - https://go.dev/doc/security/fuzz
+  - https://pkg.go.dev/sync#Map.LoadOrStore
+  - https://pkg.go.dev/testing#F
 - Status: Active.
-- Review notes: `loaded` describes the state before this call. In a concurrent test, only the first successful atomic store reports false; do not treat the final value as predictable without controlling scheduling.
+- Review notes: For a present model key, do not overwrite the model with the generated value. `loaded == true` means the existing modeled value must be returned and retained.

@@ -13,6 +13,7 @@ func FuzzStoreSequentialOperations(f *testing.F) {
 		deleteOperation
 		clearOperation
 		loadAndDeleteOperation
+		swapOperation
 	)
 
 	// Set(1, 10), Get(1), Delete(1), Get(1 missing).
@@ -39,11 +40,17 @@ func FuzzStoreSequentialOperations(f *testing.F) {
 		loadAndDeleteOperation, 7, 0,
 	})
 
+	// Swap a missing key, then Swap the now-existing key.
+	f.Add([]byte{
+		swapOperation, 8, 80,
+		swapOperation, 8, 81,
+	})
+
 	f.Fuzz(func(t *testing.T, data []byte) {
 		const (
 			bytesPerOperation = 3
 			maxOperations     = 64
-			operationCount    = 5
+			operationCount    = 6
 		)
 
 		db := kvstore.New[byte, byte]()
@@ -230,6 +237,47 @@ func FuzzStoreSequentialOperations(f *testing.F) {
 				}
 
 				checkState(step, "LoadAndDelete")
+
+			case swapOperation:
+				want, exists := model[key]
+
+				got, loaded := db.Swap(key, value)
+
+				if loaded != exists {
+					t.Fatalf(
+						"step %d: Swap(%d, %d) loaded = %v, want %v",
+						step,
+						key,
+						value,
+						loaded,
+						exists,
+					)
+				}
+
+				if exists {
+					if got != want {
+						t.Fatalf(
+							"step %d: Swap(%d, %d) previous value = %d, want %d",
+							step,
+							key,
+							value,
+							got,
+							want,
+						)
+					}
+				} else if got != 0 {
+					t.Fatalf(
+						"step %d: Swap(%d, %d) previous value = %d, want zero value 0",
+						step,
+						key,
+						value,
+						got,
+					)
+				}
+
+				model[key] = value
+
+				checkState(step, "Swap")
 			}
 		}
 	})
