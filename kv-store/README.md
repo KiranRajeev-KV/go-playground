@@ -58,6 +58,12 @@ Run benchmarks with allocation reporting:
 go test -run='^$' -bench=. -benchmem -count=5
 ```
 
+Run the sequential-operation fuzz target:
+
+```text
+go test -run='^$' -fuzz=FuzzStoreSequentialOperations -fuzztime=5s
+```
+
 ## Repository structure
 
 - `store.go` — reusable `kvstore` package

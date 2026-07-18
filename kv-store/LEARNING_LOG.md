@@ -166,31 +166,45 @@ Historically completed and present in the current implementation: one `sync.RWMu
 - Associated commit message recommendation: `bench(store): add clear benchmarks`
 - Completed: 2026-07-18
 
-## Active Task
-
 ### Task 27: Fuzz sequential store operations against a reference model
 
-- Objective: Learn property-based testing by checking the store's sequential behavior against a plain Go map model.
-- Why this is next: Deterministic tests cover known cases; fuzzing can generate combinations of operations and inputs that are difficult to enumerate, without expanding production behavior.
-- Required behavior: Add one external-package fuzz target that interprets a byte slice as a bounded sequence of `Set`, `Get`, `Delete`, and `Clear` operations on `Store[byte, byte]`. Maintain a plain `map[byte]byte` model and after each operation assert equivalent values, missing-key errors through `errors.Is`, and `Len` results. Add at least two deterministic seed inputs with `f.Add`.
-- Constraints: This task is sequential only; do not introduce goroutines, sleeps, randomness outside the fuzz input, or map-order-dependent assertions. Bound processing so a large fuzz input cannot make one execution unreasonably slow. Do not mutate the generated corpus manually.
+- Objective: Learn property-based testing by checking sequential store behavior against a plain Go map model.
+- Why it was selected: Deterministic tests cover known cases; fuzzing generates combinations of operations and inputs that are difficult to enumerate without expanding production behavior.
+- Required behavior: One external fuzz target interprets bounded bytes as `Set`, `Get`, `Delete`, and `Clear` operations on `Store[byte, byte]`, comparing values, missing-key errors, and `Len` with a `map[byte]byte` model after each step.
+- Constraints: Execution is sequential, bounded, deterministic except for fuzz input, and free of sleeps and map-order-dependent assertions.
+- Acceptance criteria: The target has at least two deterministic seeds, compares every operation with the model, uses `errors.Is` for missing keys, passes ordinary tests and a fixed fuzz run, and keeps baseline checks clean.
+- Learner implementation summary: Added `store_fuzz_test.go` with the correctly named `FuzzStoreSequentialOperations`, two operation-sequence seeds, a 64-operation bound, and full byte-keyspace model checks after each step.
+- Codex-maintained changes: `README.md` and `AGENTS.md` now record the exact fixed-duration fuzz command; `store_fuzz_test.go` received formatting-only changes from `go fmt ./...`; `LEARNING_LOG.md` records the completed task.
+- Verification commands: `git diff --check`; `gofmt -l .`; `go test ./...`; `go test -race ./...`; `go vet ./...`; `go test -run='^$' -fuzz=FuzzStoreSequentialOperations -fuzztime=5s`.
+- Verification results: On 2026-07-18, diff and formatting checks passed. Regular tests and race tests passed, and vet completed successfully. The five-second fuzz run executed 836,167 inputs with no failures and discovered six additional interesting coverage inputs in the fuzz cache.
+- Important lesson: A fuzz target is useful when it has a simple oracle, bounded work per input, and failure messages that identify the diverging operation.
+- References: https://go.dev/doc/security/fuzz ; https://pkg.go.dev/testing#F ; https://pkg.go.dev/errors#Is
+- Associated commit message recommendation: `test(store): fuzz sequential operations`
+- Completed: 2026-07-18
+
+## Active Task
+
+### Task 28: Add an atomic LoadAndDelete operation
+
+- Objective: Add a single-operation read-and-remove capability that avoids check-then-delete races.
+- Why this is next: The store already exposes atomic `LoadOrStore`, `Delete`, and `Clear`. A `LoadAndDelete` operation is the natural complementary primitive for callers who need the removed value without splitting the work across `Get` and `Delete`.
+- Required behavior: Add an exported `LoadAndDelete` method returning the removed value and a boolean that reports whether the key was present. If present, it removes and returns the value atomically. If absent, it returns the zero value of `V` and `false`. It must work for zero-value stores and use no error return.
+- Constraints: Use the existing exclusive-lock strategy and preserve the store's shallow value ownership. Do not implement this by calling public `Get` and `Delete`, add goroutines, introduce new errors, or rely on a caller-side sequence for atomicity.
 - Acceptance criteria:
-  - The fuzz target is in external package `kvstore_test` and has deterministic seeds.
-  - Each supported operation is compared with the reference model at every step.
-  - Missing-key behavior uses `errors.Is` with `ErrValueNotFound`.
-  - The target passes ordinary tests and a fixed fuzz run.
-  - Existing behavior remains unchanged.
-  - Formatting, tests, race detection, and vet remain clean.
+  - External tests cover present, missing, and zero-value stores.
+  - A present key is absent after a successful call and its original value is returned with `loaded == true`.
+  - A missing key returns `loaded == false` and the zero value.
+  - A concurrent same-key test deterministically shows one `loaded == true` result and all other calls return `false`, without choosing a winner.
+  - Existing behavior remains unchanged and baseline checks pass.
 - Verification plan:
   - `git diff --check`
   - `gofmt -l .`
   - `go test ./...`
   - `go test -race ./...`
   - `go vet ./...`
-  - `go test -run='^$' -fuzz=FuzzStoreSequentialOperations -fuzztime=5s`
 - References:
-  - https://go.dev/doc/security/fuzz
-  - https://pkg.go.dev/testing#F
-  - https://pkg.go.dev/errors#Is
+  - https://pkg.go.dev/sync#Map.LoadAndDelete
+  - https://pkg.go.dev/sync#RWMutex.Lock
+  - https://go.dev/ref/mem
 - Status: Active.
-- Review notes: The model is the oracle, not a second implementation of locking. Keep the operation encoding simple and the comparison local to each step so a failure points to the operation that diverged.
+- Review notes: The boolean reports presence, not whether the returned value is non-zero. Test with a value type whose zero value is meaningful so the distinction is visible.

@@ -38,6 +38,12 @@ For benchmark work, also run:
 go test -run='^$' -bench=. -benchmem -count=5
 ```
 
+For fuzzing work, run the fixed-duration target:
+
+```text
+go test -run='^$' -fuzz=FuzzStoreSequentialOperations -fuzztime=5s
+```
+
 ## Completion and handoff
 
 When a learner task is complete, inspect the diff, run verification, apply directly related documentation or formatting maintenance, rerun verification, and record the work in `LEARNING_LOG.md`. Update `README.md` for externally visible behavior. Provide exact, path-scoped Conventional Commit commands for the learner to run; never commit, reset, clean, or discard work yourself. Keep unrelated or pre-existing changes out of commit recommendations.
