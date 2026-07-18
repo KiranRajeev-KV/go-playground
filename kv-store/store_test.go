@@ -1357,3 +1357,227 @@ func TestConcurrentLoadAndDeleteSameKey(t *testing.T) {
 		)
 	}
 }
+
+func TestSwapMissingKey(t *testing.T) {
+	db := kvstore.New[int, string]()
+
+	got, loaded := db.Swap(1, "one")
+
+	if loaded {
+		t.Fatal("Swap(1) loaded = true, want false")
+	}
+
+	if got != "" {
+		t.Errorf("Swap(1) previous value = %q, want zero value %q", got, "")
+	}
+
+	stored, err := db.Get(1)
+	if err != nil {
+		t.Fatalf("Get(1) after Swap returned an error: %v", err)
+	}
+
+	if stored != "one" {
+		t.Errorf("Get(1) after Swap = %q, want %q", stored, "one")
+	}
+
+	if got := db.Len(); got != 1 {
+		t.Errorf("Len() after Swap = %d, want 1", got)
+	}
+}
+
+func TestSwapExistingKey(t *testing.T) {
+	db := kvstore.New[int, string]()
+	db.Set(1, "old")
+
+	got, loaded := db.Swap(1, "new")
+
+	if !loaded {
+		t.Fatal("Swap(1) loaded = false, want true")
+	}
+
+	if got != "old" {
+		t.Errorf("Swap(1) previous value = %q, want %q", got, "old")
+	}
+
+	stored, err := db.Get(1)
+	if err != nil {
+		t.Fatalf("Get(1) after Swap returned an error: %v", err)
+	}
+
+	if stored != "new" {
+		t.Errorf("Get(1) after Swap = %q, want %q", stored, "new")
+	}
+
+	if got := db.Len(); got != 1 {
+		t.Errorf("Len() after Swap = %d, want 1", got)
+	}
+}
+
+func TestSwapExistingZeroValueReportsLoaded(t *testing.T) {
+	db := kvstore.New[int, int]()
+	db.Set(1, 0)
+
+	got, loaded := db.Swap(1, 10)
+
+	if !loaded {
+		t.Fatal("Swap(1) loaded = false, want true for an existing zero value")
+	}
+
+	if got != 0 {
+		t.Errorf("Swap(1) previous value = %d, want 0", got)
+	}
+
+	stored, err := db.Get(1)
+	if err != nil {
+		t.Fatalf("Get(1) after Swap returned an error: %v", err)
+	}
+
+	if stored != 10 {
+		t.Errorf("Get(1) after Swap = %d, want 10", stored)
+	}
+}
+
+func TestSwapZeroValueStore(t *testing.T) {
+	var db kvstore.Store[int, string]
+
+	got, loaded := db.Swap(1, "one")
+
+	if loaded {
+		t.Fatal("Swap(1) on zero-value store loaded = true, want false")
+	}
+
+	if got != "" {
+		t.Errorf(
+			"Swap(1) on zero-value store previous value = %q, want zero value %q",
+			got,
+			"",
+		)
+	}
+
+	stored, err := db.Get(1)
+	if err != nil {
+		t.Fatalf("Get(1) after Swap on zero-value store returned an error: %v", err)
+	}
+
+	if stored != "one" {
+		t.Errorf("Get(1) after Swap = %q, want %q", stored, "one")
+	}
+
+	got, loaded = db.Swap(1, "two")
+
+	if !loaded {
+		t.Fatal("second Swap(1) on zero-value store loaded = false, want true")
+	}
+
+	if got != "one" {
+		t.Errorf("second Swap(1) previous value = %q, want %q", got, "one")
+	}
+}
+
+func TestConcurrentSwapSameKey(t *testing.T) {
+	db := kvstore.New[int, int]()
+
+	const (
+		key        = 1
+		goroutines = 100
+	)
+
+	type result struct {
+		supplied int
+		previous int
+		loaded   bool
+	}
+
+	results := make(chan result, goroutines)
+
+	var wg sync.WaitGroup
+
+	for value := 1; value <= goroutines; value++ {
+		value := value
+
+		wg.Go(func() {
+			previous, loaded := db.Swap(key, value)
+
+			results <- result{
+				supplied: value,
+				previous: previous,
+				loaded:   loaded,
+			}
+		})
+	}
+
+	wg.Wait()
+	close(results)
+
+	initialInsertions := 0
+	observedValues := make(map[int]int, goroutines)
+
+	for result := range results {
+		if !result.loaded {
+			initialInsertions++
+
+			if result.previous != 0 {
+				t.Errorf(
+					"initial Swap(%d, %d) previous value = %d, want zero value 0",
+					key,
+					result.supplied,
+					result.previous,
+				)
+			}
+
+			continue
+		}
+
+		if result.previous < 1 || result.previous > goroutines {
+			t.Errorf(
+				"Swap(%d, %d) previous value = %d, want a supplied value between 1 and %d",
+				key,
+				result.supplied,
+				result.previous,
+				goroutines,
+			)
+			continue
+		}
+
+		observedValues[result.previous]++
+	}
+
+	if initialInsertions != 1 {
+		t.Errorf(
+			"Swap calls with loaded=false = %d, want exactly 1",
+			initialInsertions,
+		)
+	}
+
+	finalValue, err := db.Get(key)
+	if err != nil {
+		t.Fatalf("Get(%d) after concurrent Swap calls returned an error: %v", key, err)
+	}
+
+	if finalValue < 1 || finalValue > goroutines {
+		t.Fatalf(
+			"Get(%d) after concurrent Swap calls = %d, want between 1 and %d",
+			key,
+			finalValue,
+			goroutines,
+		)
+	}
+
+	// Every supplied value must appear exactly once as either a returned
+	// previous value or the final value remaining in the store.
+	observedValues[finalValue]++
+
+	for value := 1; value <= goroutines; value++ {
+		if got := observedValues[value]; got != 1 {
+			t.Errorf(
+				"supplied value %d observed %d times as a previous or final value, want 1",
+				value,
+				got,
+			)
+		}
+	}
+
+	if got := db.Len(); got != 1 {
+		t.Errorf("Len() after concurrent Swap calls = %d, want 1", got)
+	}
+}

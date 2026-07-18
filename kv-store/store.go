@@ -170,3 +170,19 @@ func (s *Store[K, V]) LoadAndDelete(key K) (V, bool) {
 	delete(s.store, key)
 	return val, true
 }
+
+// Swap stores value for key and returns the previous value.
+// It reports whether key was present before the call.
+func (s *Store[K, V]) Swap(key K, value V) (V, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.store == nil {
+		s.store = make(map[K]V)
+	}
+
+	prev, loaded := s.store[key]
+	s.store[key] = value
+
+	return prev, loaded
+}

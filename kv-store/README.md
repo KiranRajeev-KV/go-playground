@@ -39,6 +39,7 @@ store.Set("visits", 1)
 - `Len` returns a concurrency-safe, point-in-time entry count.
 - `Clear` atomically removes every entry.
 - `LoadAndDelete` atomically removes and returns a value, reporting whether the key was present.
+- `Swap` atomically stores a value and reports the previous value and prior key presence.
 
 `Store` synchronizes access to its internal map. It does not deep-copy values or synchronize mutable data referenced by values; callers own that synchronization. Do not copy a `Store` after first use.
 
