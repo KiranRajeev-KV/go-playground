@@ -358,8 +358,6 @@ Historically completed and present in the current implementation: one `sync.RWMu
 - Associated commit message recommendation: `bench(store): benchmark parallel snapshots`
 - Completed: 2026-07-18
 
-## Active Task
-
 ### Task 38: Benchmark Set under parallel write contention
 
 - Objective: Measure the existing-key `Set` path when several goroutines contend for the store's exclusive lock.
@@ -374,4 +372,15 @@ Historically completed and present in the current implementation: one `sync.RWMu
   - Baseline, one-second targeted, and repeated full benchmark suites pass.
 - Verification plan: `git diff --check`; `gofmt -l .`; `go test ./...`; `go test -race ./...`; `go vet ./...`; `go test -run='^$' -bench='^BenchmarkParallelSet$' -benchmem -benchtime=1s`; `go test -run='^$' -bench=. -benchmem -count=5`.
 - References: https://pkg.go.dev/testing#B.RunParallel ; https://pkg.go.dev/sync#RWMutex.Lock ; https://pkg.go.dev/testing#B.ReportAllocs
-- Status: Active.
+- Learner implementation summary: Added `BenchmarkParallelSet`, which shares a store with the target key already present and resets timing before workers repeatedly set that key.
+- Codex-maintained changes: `LEARNING_LOG.md` records the completed task; `go fmt ./...` made no formatting changes.
+- Verification commands: `git diff --check`; `gofmt -l .`; `go test ./...`; `go test -race ./...`; `go vet ./...`; `go test -run='^$' -bench='^BenchmarkParallelSet$' -benchmem -benchtime=1s`; `go test -run='^$' -bench=. -benchmem -count=5`.
+- Verification results: On 2026-07-18, diff and formatting checks passed. Tests and race tests passed, and vet completed with no findings. The one-second targeted run completed at 101.7 ns/op with 0 B/op and 0 allocs/op. An initial full-suite attempt was terminated with `signal: killed` during `BenchmarkParallelGet`; the repeated full suite then completed successfully.
+- Important lesson: Parallel-write measurements are intentionally noisier than sequential ones because lock ownership and CPU scheduling contend; report repeated samples rather than treating one result as a performance guarantee.
+- References: https://pkg.go.dev/testing#B.RunParallel ; https://pkg.go.dev/sync#RWMutex.Lock ; https://pkg.go.dev/testing#B.ReportAllocs
+- Associated commit message recommendation: `bench(store): benchmark parallel set`
+- Completed: 2026-07-18
+
+## Active Task
+
+No active learner task. Awaiting explicit learner permission before assigning one.
