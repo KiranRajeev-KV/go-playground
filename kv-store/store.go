@@ -154,3 +154,19 @@ func (s *Store[K, V]) Clear() {
 
 	clear(s.store)
 }
+
+// LoadAndDelete removes and returns the value associated with key.
+// It returns the zero value of V and false if key is not present.
+func (s *Store[K, V]) LoadAndDelete(key K) (V, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	val, ok := s.store[key]
+	if !ok {
+		var zero V
+		return zero, false
+	}
+
+	delete(s.store, key)
+	return val, true
+}

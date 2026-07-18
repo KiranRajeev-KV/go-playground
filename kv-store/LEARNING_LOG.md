@@ -182,29 +182,46 @@ Historically completed and present in the current implementation: one `sync.RWMu
 - Associated commit message recommendation: `test(store): fuzz sequential operations`
 - Completed: 2026-07-18
 
-## Active Task
-
 ### Task 28: Add an atomic LoadAndDelete operation
 
 - Objective: Add a single-operation read-and-remove capability that avoids check-then-delete races.
-- Why this is next: The store already exposes atomic `LoadOrStore`, `Delete`, and `Clear`. A `LoadAndDelete` operation is the natural complementary primitive for callers who need the removed value without splitting the work across `Get` and `Delete`.
-- Required behavior: Add an exported `LoadAndDelete` method returning the removed value and a boolean that reports whether the key was present. If present, it removes and returns the value atomically. If absent, it returns the zero value of `V` and `false`. It must work for zero-value stores and use no error return.
-- Constraints: Use the existing exclusive-lock strategy and preserve the store's shallow value ownership. Do not implement this by calling public `Get` and `Delete`, add goroutines, introduce new errors, or rely on a caller-side sequence for atomicity.
+- Why it was selected: It complements atomic `LoadOrStore`, `Delete`, and `Clear` for callers who need the removed value without splitting work across operations.
+- Required behavior: `LoadAndDelete` atomically removes and returns an existing value with `loaded == true`; absent keys return `V`'s zero value and `false`, including on a zero-value store.
+- Constraints: It uses the exclusive lock, preserves shallow ownership, adds no errors or goroutines, and does not compose public `Get` and `Delete` calls.
+- Acceptance criteria: External tests cover present, missing, zero-value, and concurrent same-key calls; only one concurrent caller loads the value; existing behavior and baseline checks remain clean.
+- Learner implementation summary: Added the exclusive-lock `LoadAndDelete` method and external tests for present, missing, zero-value, and 100-way same-key contention behavior.
+- Codex-maintained changes: `store.go` gained the comment-only method contract; `README.md` lists `LoadAndDelete`; `go fmt ./...` made no reported formatting changes.
+- Verification commands: `git diff --check`; `gofmt -l .`; `go test ./...`; `go test -race ./...`; `go vet ./...`.
+- Verification results: On 2026-07-18, diff and formatting checks passed. Regular tests and race tests passed, and vet completed successfully with no reported issues.
+- Important lesson: Presence must be reported independently of the returned value because a stored value can itself be the type's zero value.
+- References: https://pkg.go.dev/sync#Map.LoadAndDelete ; https://pkg.go.dev/sync#RWMutex.Lock ; https://go.dev/ref/mem
+- Associated commit message recommendation: `feat(store): add atomic load and delete`
+- Completed: 2026-07-18
+
+## Active Task
+
+### Task 29: Extend the fuzz model with LoadAndDelete
+
+- Objective: Keep the model-based fuzz test aligned with the public mutation API.
+- Why this is next: `LoadAndDelete` has deterministic tests, but the sequential fuzz model currently does not generate it. Extending the oracle ensures operation sequences can exercise interactions with `Set`, `Get`, `Delete`, and `Clear`.
+- Required behavior: Extend `FuzzStoreSequentialOperations` with one new operation encoding for `LoadAndDelete`. For each occurrence, compare the returned value and boolean with removing the key from the plain map model; then run the existing full state check. Add at least one deterministic seed that covers both present and absent `LoadAndDelete` calls.
+- Constraints: Do not alter production code, existing operation meanings, or the model's input bound. The boolean must be compared to model presence, not inferred from the returned value. Keep the target sequential and deterministic.
 - Acceptance criteria:
-  - External tests cover present, missing, and zero-value stores.
-  - A present key is absent after a successful call and its original value is returned with `loaded == true`.
-  - A missing key returns `loaded == false` and the zero value.
-  - A concurrent same-key test deterministically shows one `loaded == true` result and all other calls return `false`, without choosing a winner.
-  - Existing behavior remains unchanged and baseline checks pass.
+  - The fuzz operation set includes `LoadAndDelete`.
+  - A seed exercises both its present and absent paths.
+  - Each fuzzed `LoadAndDelete` step checks value, presence boolean, and post-operation model state.
+  - Existing fuzz checks and bounded execution remain intact.
+  - Ordinary tests, race detection, vet, and a five-second fuzz run pass.
 - Verification plan:
   - `git diff --check`
   - `gofmt -l .`
   - `go test ./...`
   - `go test -race ./...`
   - `go vet ./...`
+  - `go test -run='^$' -fuzz=FuzzStoreSequentialOperations -fuzztime=5s`
 - References:
+  - https://go.dev/doc/security/fuzz
   - https://pkg.go.dev/sync#Map.LoadAndDelete
-  - https://pkg.go.dev/sync#RWMutex.Lock
-  - https://go.dev/ref/mem
+  - https://pkg.go.dev/testing#F
 - Status: Active.
-- Review notes: The boolean reports presence, not whether the returned value is non-zero. Test with a value type whose zero value is meaningful so the distinction is visible.
+- Review notes: Let the map model decide the expected boolean before calling the store. A zero stored byte and an absent key must produce different expected results.

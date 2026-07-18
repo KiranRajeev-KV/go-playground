@@ -38,6 +38,7 @@ store.Set("visits", 1)
 - `Snapshot` returns a new map containing a shallow copy of the current entries.
 - `Len` returns a concurrency-safe, point-in-time entry count.
 - `Clear` atomically removes every entry.
+- `LoadAndDelete` atomically removes and returns a value, reporting whether the key was present.
 
 `Store` synchronizes access to its internal map. It does not deep-copy values or synchronize mutable data referenced by values; callers own that synchronization. Do not copy a `Store` after first use.
 

@@ -1184,3 +1184,176 @@ func TestClearConcurrentWithReaders(t *testing.T) {
 		t.Errorf("Get(%d) = %d, want %d", numKeys, got, numKeys)
 	}
 }
+
+func TestLoadAndDeletePresentKey(t *testing.T) {
+	db := kvstore.New[int, string]()
+	db.Set(1, "one")
+
+	got, loaded := db.LoadAndDelete(1)
+
+	if !loaded {
+		t.Fatal("LoadAndDelete(1) loaded = false, want true")
+	}
+
+	if got != "one" {
+		t.Errorf("LoadAndDelete(1) value = %q, want %q", got, "one")
+	}
+
+	_, err := db.Get(1)
+	if !errors.Is(err, kvstore.ErrValueNotFound) {
+		t.Errorf(
+			"Get(1) after LoadAndDelete error = %v, want %v",
+			err,
+			kvstore.ErrValueNotFound,
+		)
+	}
+
+	if got := db.Len(); got != 0 {
+		t.Errorf("Len() after LoadAndDelete = %d, want 0", got)
+	}
+}
+
+func TestLoadAndDeleteMissingKey(t *testing.T) {
+	db := kvstore.New[int, string]()
+
+	got, loaded := db.LoadAndDelete(1)
+
+	if loaded {
+		t.Fatal("LoadAndDelete(1) loaded = true, want false")
+	}
+
+	if got != "" {
+		t.Errorf(
+			"LoadAndDelete(1) value = %q, want zero value %q",
+			got,
+			"",
+		)
+	}
+
+	if got := db.Len(); got != 0 {
+		t.Errorf("Len() after missing LoadAndDelete = %d, want 0", got)
+	}
+}
+
+func TestLoadAndDeleteZeroValueStore(t *testing.T) {
+	var db kvstore.Store[int, string]
+
+	got, loaded := db.LoadAndDelete(1)
+
+	if loaded {
+		t.Fatal("LoadAndDelete(1) on zero-value store loaded = true, want false")
+	}
+
+	if got != "" {
+		t.Errorf(
+			"LoadAndDelete(1) on zero-value store value = %q, want zero value %q",
+			got,
+			"",
+		)
+	}
+
+	// Verify that the zero-value store remains usable.
+	db.Set(1, "one")
+
+	got, loaded = db.LoadAndDelete(1)
+
+	if !loaded {
+		t.Fatal("LoadAndDelete(1) after Set loaded = false, want true")
+	}
+
+	if got != "one" {
+		t.Errorf(
+			"LoadAndDelete(1) after Set value = %q, want %q",
+			got,
+			"one",
+		)
+	}
+
+	_, err := db.Get(1)
+	if !errors.Is(err, kvstore.ErrValueNotFound) {
+		t.Errorf(
+			"Get(1) after LoadAndDelete error = %v, want %v",
+			err,
+			kvstore.ErrValueNotFound,
+		)
+	}
+}
+
+func TestConcurrentLoadAndDeleteSameKey(t *testing.T) {
+	db := kvstore.New[int, int]()
+
+	const (
+		key        = 1
+		stored     = 42
+		goroutines = 100
+	)
+
+	db.Set(key, stored)
+
+	type result struct {
+		value  int
+		loaded bool
+	}
+
+	results := make(chan result, goroutines)
+
+	var wg sync.WaitGroup
+
+	for range goroutines {
+		wg.Go(func() {
+			value, loaded := db.LoadAndDelete(key)
+			results <- result{
+				value:  value,
+				loaded: loaded,
+			}
+		})
+	}
+
+	wg.Wait()
+	close(results)
+
+	loadedCount := 0
+
+	for result := range results {
+		if result.loaded {
+			loadedCount++
+
+			if result.value != stored {
+				t.Errorf(
+					"successful LoadAndDelete(%d) value = %d, want %d",
+					key,
+					result.value,
+					stored,
+				)
+			}
+
+			continue
+		}
+
+		if result.value != 0 {
+			t.Errorf(
+				"unsuccessful LoadAndDelete(%d) value = %d, want zero value 0",
+				key,
+				result.value,
+			)
+		}
+	}
+
+	if loadedCount != 1 {
+		t.Errorf(
+			"LoadAndDelete(%d) calls with loaded=true = %d, want 1",
+			key,
+			loadedCount,
+		)
+	}
+
+	_, err := db.Get(key)
+	if !errors.Is(err, kvstore.ErrValueNotFound) {
+		t.Errorf(
+			"Get(%d) after concurrent LoadAndDelete calls error = %v, want %v",
+			key,
+			err,
+			kvstore.ErrValueNotFound,
+		)
+	}
+}
