@@ -337,12 +337,10 @@ Historically completed and present in the current implementation: one `sync.RWMu
 - Associated commit message recommendation: `bench(store): benchmark len reads`
 - Completed: 2026-07-18
 
-## Active Task
-
 ### Task 37: Benchmark Snapshot under parallel readers
 
 - Objective: Measure snapshot behavior when multiple goroutines concurrently take independent snapshots of the same stable store.
-- Why this is next: `Snapshot` already has sequential size benchmarks; a focused parallel benchmark will reveal the concurrent-read and allocation profile without changing the API.
+- Why it was selected: `Snapshot` already had sequential size benchmarks; this focused benchmark reveals its concurrent-read and allocation profile without changing the API.
 - Required behavior: Add one parallel `Snapshot` benchmark using a shared, pre-populated store of 1,000 entries. Every timed worker iteration must take exactly one snapshot, and setup must be excluded from timing.
 - Constraints: Do not mutate the store in the benchmark, do not reuse or share returned snapshot maps, and do not control timers inside `RunParallel` workers. Report allocations.
 - Acceptance criteria:
@@ -351,6 +349,29 @@ Historically completed and present in the current implementation: one `sync.RWMu
   - Allocation metrics are reported.
   - Existing benchmarks remain unchanged.
   - Baseline, one-second targeted, and repeated full benchmark suites pass.
-- Verification plan: `git diff --check`; `gofmt -l .`; `go test ./...`; `go test -race ./...`; `go vet ./...`; `go test -run='^$' -bench='^BenchmarkParallelSnapshot$' -benchmem -benchtime=1s`; `go test -run='^$' -bench=. -benchmem -count=5`.
+- Learner implementation summary: Added `BenchmarkParallelSnapshot`, which shares a pre-populated 1,000-entry store and resets timing before its workers call `Snapshot`.
+- Codex-maintained changes: `LEARNING_LOG.md` records this completed task; `go fmt ./...` made no formatting changes.
+- Verification commands: `git diff --check`; `gofmt -l .`; `go test ./...`; `go test -race ./...`; `go vet ./...`; `go test -run='^$' -bench='^BenchmarkParallelSnapshot$' -benchmem -benchtime=1s`; `go test -run='^$' -bench=. -benchmem -count=5`.
+- Verification results: On 2026-07-18, diff and formatting checks passed. Tests and race tests passed, and vet completed with no findings. The one-second benchmark completed at 17,907 ns/op with 36,993 B/op and 6 allocs/op. The five-run full benchmark suite completed successfully.
+- Important lesson: A parallel read benchmark can still allocate heavily when each operation intentionally materializes a new result; allocation metrics explain that contract cost.
 - References: https://pkg.go.dev/testing#B.RunParallel ; https://pkg.go.dev/testing#B.ReportAllocs ; https://go.dev/ref/mem
+- Associated commit message recommendation: `bench(store): benchmark parallel snapshots`
+- Completed: 2026-07-18
+
+## Active Task
+
+### Task 38: Benchmark Set under parallel write contention
+
+- Objective: Measure the existing-key `Set` path when several goroutines contend for the store's exclusive lock.
+- Why this is next: The suite now measures parallel read operations and sequential writes, but does not measure the lock-contention profile of the core write operation.
+- Required behavior: Add one parallel `Set` benchmark against a shared store containing the benchmark key. Setup must be excluded, and every worker iteration must perform exactly one existing-key `Set`.
+- Constraints: Do not measure map growth, absent-key insertion, or per-worker setup. Do not control timers inside workers. Use a deterministic value and report allocations.
+- Acceptance criteria:
+  - The benchmark uses `RunParallel` with a timing boundary after setup.
+  - All workers write the same existing key.
+  - The timed worker body contains only one `Set` operation.
+  - Allocation metrics are reported.
+  - Baseline, one-second targeted, and repeated full benchmark suites pass.
+- Verification plan: `git diff --check`; `gofmt -l .`; `go test ./...`; `go test -race ./...`; `go vet ./...`; `go test -run='^$' -bench='^BenchmarkParallelSet$' -benchmem -benchtime=1s`; `go test -run='^$' -bench=. -benchmem -count=5`.
+- References: https://pkg.go.dev/testing#B.RunParallel ; https://pkg.go.dev/sync#RWMutex.Lock ; https://pkg.go.dev/testing#B.ReportAllocs
 - Status: Active.

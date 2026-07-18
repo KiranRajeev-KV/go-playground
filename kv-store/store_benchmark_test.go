@@ -66,6 +66,23 @@ func BenchmarkSnapshot(b *testing.B) {
 	}
 }
 
+func BenchmarkParallelSnapshot(b *testing.B) {
+	b.ReportAllocs()
+
+	db := kvstore.New[int, int]()
+	for key := range 1000 {
+		db.Set(key, key)
+	}
+
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			db.Snapshot()
+		}
+	})
+}
+
 func BenchmarkClear(b *testing.B) {
 	cases := []struct {
 		name string
