@@ -262,18 +262,34 @@ Historically completed and present in the current implementation: one `sync.RWMu
 - Associated commit message recommendation: `test(store): fuzz load or store`
 - Completed: 2026-07-18
 
-## Active Task
-
 ### Task 33: Extend the fuzz model with Update
 
 - Objective: Exercise callback-based mutation in generated sequential operation sequences.
-- Why this is next: `Update` is the remaining public state-transition operation not represented in the model fuzzer.
-- Required behavior: Add an `Update` operation encoding that uses the generated value as the callback result. For an existing model key, `Update` must return nil and replace the model value; for an absent key, it must return `ErrValueNotFound` identified with `errors.Is` and leave the model unchanged. Add a seed covering both paths.
-- Constraints: The callback must be pure, immediate, and must not access the store. Do not change production code, existing encodings, bounds, or sequential execution.
+- Why it was selected: `Update` was the remaining public state-transition operation absent from the model fuzzer.
+- Required behavior: The target uses a pure callback returning generated value, checks nil or `ErrValueNotFound` against model presence, updates the model only when present, and checks full state.
+- Constraints: Production code, encodings, bounds, and sequential execution remain unchanged; callbacks never re-enter the store.
+- Acceptance criteria: Operation and missing/existing seed are present; every step checks error and state; baseline and five-second fuzz checks pass.
+- Learner implementation summary: Added update encoding, seed, pure callback, error comparison, conditional model update, and full-state check.
+- Codex-maintained changes: `LEARNING_LOG.md` records the completed task; no other maintenance was needed.
+- Verification commands: `git diff --check`; `gofmt -l .`; `go test ./...`; `go test -race ./...`; `go vet ./...`; `go test -run='^$' -fuzz=FuzzStoreSequentialOperations -fuzztime=5s`.
+- Verification results: On 2026-07-18, diff and formatting checks passed. Tests, race detection, and vet passed. The fuzz target ran 1,199,786 inputs in five seconds without failures.
+- Important lesson: Fuzzing callback APIs should use pure callbacks and verify visible state, avoiding re-entrancy hazards as part of the test itself.
+- References: https://go.dev/doc/security/fuzz ; https://pkg.go.dev/testing#F
+- Associated commit message recommendation: `test(store): fuzz update`
+- Completed: 2026-07-18
+
+## Active Task
+
+### Task 34: Extend the fuzz model with Snapshot
+
+- Objective: Exercise shallow map snapshots in generated sequential operation sequences.
+- Why this is next: `Snapshot` is the remaining public operation not explicitly invoked by the model fuzzer.
+- Required behavior: Add a `Snapshot` operation encoding that compares the returned map's length and every byte-key/value entry to the model. Add a seed that snapshots a non-empty state and then continues with mutation to preserve sequence coverage.
+- Constraints: Do not mutate the returned snapshot in this task, change production code, existing encodings, input bounds, or sequential execution. Avoid map-order assumptions by comparing by key.
 - Acceptance criteria:
-  - The fuzz operation set includes `Update`.
+  - The fuzz operation set includes `Snapshot`.
   - A seed covers missing and existing paths.
-  - Every fuzzed update checks result error and updated or unchanged model state.
+  - Every fuzzed snapshot checks complete map equivalence with the model.
   - Existing fuzz operations and checks remain intact.
   - Ordinary tests, race detection, vet, and a five-second fuzz run pass.
 - Verification plan:
@@ -285,7 +301,7 @@ Historically completed and present in the current implementation: one `sync.RWMu
   - `go test -run='^$' -fuzz=FuzzStoreSequentialOperations -fuzztime=5s`
 - References:
   - https://go.dev/doc/security/fuzz
-  - https://pkg.go.dev/sync#RWMutex.Lock
+  - https://pkg.go.dev/maps#Equal
   - https://pkg.go.dev/testing#F
 - Status: Active.
-- Review notes: Test the callback contract through the state result, not by making the callback re-enter the store. A missing-key update must not invoke a callback with an invented value.
+- Review notes: Snapshot is shallow, but byte values are scalars. This task validates map-entry equivalence only; it does not introduce concurrent mutation or aliasing checks.

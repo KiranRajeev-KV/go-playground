@@ -15,6 +15,7 @@ func FuzzStoreSequentialOperations(f *testing.F) {
 		loadAndDeleteOperation
 		swapOperation
 		loadOrStoreOperation
+		updateOperation
 	)
 
 	// Set(1, 10), Get(1), Delete(1), Get(1 missing).
@@ -53,11 +54,18 @@ func FuzzStoreSequentialOperations(f *testing.F) {
 		loadOrStoreOperation, 9, 91,
 	})
 
+	// Update an existing key, then attempt to update a missing key.
+	f.Add([]byte{
+		setOperation, 10, 100,
+		updateOperation, 10, 101,
+		updateOperation, 11, 110,
+	})
+
 	f.Fuzz(func(t *testing.T, data []byte) {
 		const (
 			bytesPerOperation = 3
 			maxOperations     = 64
-			operationCount    = 7
+			operationCount    = 8
 		)
 
 		db := kvstore.New[byte, byte]()
@@ -81,7 +89,6 @@ func FuzzStoreSequentialOperations(f *testing.F) {
 				)
 			}
 
-			// Check the complete bounded byte keyspace.
 			for candidate := 0; candidate <= 255; candidate++ {
 				key := byte(candidate)
 
@@ -333,6 +340,36 @@ func FuzzStoreSequentialOperations(f *testing.F) {
 				}
 
 				checkState(step, "LoadOrStore")
+
+			case updateOperation:
+				_, exists := model[key]
+
+				err := db.Update(key, func(byte) byte {
+					return value
+				})
+
+				if exists {
+					if err != nil {
+						t.Fatalf(
+							"step %d: Update(%d) returned error %v, want nil",
+							step,
+							key,
+							err,
+						)
+					}
+
+					model[key] = value
+				} else if !errors.Is(err, kvstore.ErrValueNotFound) {
+					t.Fatalf(
+						"step %d: Update(%d) error = %v, want %v",
+						step,
+						key,
+						err,
+						kvstore.ErrValueNotFound,
+					)
+				}
+
+				checkState(step, "Update")
 			}
 		}
 	})
