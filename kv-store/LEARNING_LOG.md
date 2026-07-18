@@ -150,30 +150,47 @@ Historically completed and present in the current implementation: one `sync.RWMu
 - Associated commit message recommendation: `feat(store): add atomic clear`
 - Completed: 2026-07-18
 
-## Active Task
-
 ### Task 26: Benchmark Clear with excluded re-population setup
 
 - Objective: Measure the cost of clearing populated stores without measuring the work needed to re-populate them.
-- Why this is next: `Clear` is now a public bulk operation. Its benchmark must handle the fact that every measured clear leaves the store empty, making timer boundaries more subtle than the existing read benchmarks.
-- Required behavior: Add sequential `Clear` benchmark subtests for populated sizes 10, 1000, and 100000. Each measured iteration clears one fully populated store of the selected size. Re-population and any allocation required to prepare the next iteration must be excluded from the measured interval. Report allocations.
-- Constraints: Do not modify store behavior. Keep setup deterministic, do not use sleeps, and do not turn the benchmark into a measurement of `Set` or map allocation. The cleared operation must remain observable to the compiler through its mutation; do not add artificial result handling.
+- Why it was selected: `Clear` leaves the store empty, so its benchmark teaches careful per-iteration timer boundaries beyond one-time setup.
+- Required behavior: Sequential `Clear` subtests cover populated sizes 10, 1000, and 100000; each timed iteration clears one populated store, and re-population/allocation setup remains outside the measured interval.
+- Constraints: Store behavior remains unchanged. Setup is deterministic, sleeps are forbidden, and the benchmark does not measure `Set` or map allocation as part of `Clear`.
+- Acceptance criteria: All three sizes are exact; every timed operation clears once; setup is excluded per iteration; allocations are reported; benchmark output and baseline checks complete.
+- Learner implementation summary: Added `BenchmarkClear` subtests for the three sizes, with one-time setup before `B.Loop` and stopped-timer re-population between timed clears.
+- Codex-maintained changes: No Go documentation or formatting changes were required; `LEARNING_LOG.md` records the completed benchmark task.
+- Verification commands: `git diff --check`; `gofmt -l .`; `go test ./...`; `go test -race ./...`; `go vet ./...`; `go test -run='^$' -bench='^BenchmarkClear$' -benchmem -benchtime=1s`; `go test -run='^$' -bench=. -benchmem -count=5`.
+- Verification results: On 2026-07-18, diff and formatting checks passed. Regular tests and race tests passed, and vet completed successfully. Both the fixed-duration `BenchmarkClear` run and the repeated full benchmark suite completed successfully with allocation reporting.
+- Important lesson: A benchmark needs a timing boundary for every setup phase, not just the setup before its loop. Labels must state the actual workload or the numbers are not interpretable.
+- References: https://pkg.go.dev/testing#B.StopTimer ; https://pkg.go.dev/testing#B.StartTimer ; https://pkg.go.dev/testing#B.Loop
+- Associated commit message recommendation: `bench(store): add clear benchmarks`
+- Completed: 2026-07-18
+
+## Active Task
+
+### Task 27: Fuzz sequential store operations against a reference model
+
+- Objective: Learn property-based testing by checking the store's sequential behavior against a plain Go map model.
+- Why this is next: Deterministic tests cover known cases; fuzzing can generate combinations of operations and inputs that are difficult to enumerate, without expanding production behavior.
+- Required behavior: Add one external-package fuzz target that interprets a byte slice as a bounded sequence of `Set`, `Get`, `Delete`, and `Clear` operations on `Store[byte, byte]`. Maintain a plain `map[byte]byte` model and after each operation assert equivalent values, missing-key errors through `errors.Is`, and `Len` results. Add at least two deterministic seed inputs with `f.Add`.
+- Constraints: This task is sequential only; do not introduce goroutines, sleeps, randomness outside the fuzz input, or map-order-dependent assertions. Bound processing so a large fuzz input cannot make one execution unreasonably slow. Do not mutate the generated corpus manually.
 - Acceptance criteria:
-  - Subtests cover all three specified sizes.
-  - Each timed operation clears a populated store exactly once.
-  - Re-population/setup is outside measured time for every iteration.
-  - Allocation metrics are reported and benchmark output completes.
-  - Existing benchmarks and baseline checks remain clean.
+  - The fuzz target is in external package `kvstore_test` and has deterministic seeds.
+  - Each supported operation is compared with the reference model at every step.
+  - Missing-key behavior uses `errors.Is` with `ErrValueNotFound`.
+  - The target passes ordinary tests and a fixed fuzz run.
+  - Existing behavior remains unchanged.
+  - Formatting, tests, race detection, and vet remain clean.
 - Verification plan:
   - `git diff --check`
   - `gofmt -l .`
   - `go test ./...`
   - `go test -race ./...`
   - `go vet ./...`
-  - `go test -run='^$' -bench=. -benchmem -count=5`
+  - `go test -run='^$' -fuzz=FuzzStoreSequentialOperations -fuzztime=5s`
 - References:
-  - https://pkg.go.dev/testing#B.StopTimer
-  - https://pkg.go.dev/testing#B.StartTimer
-  - https://pkg.go.dev/testing#B.Loop
+  - https://go.dev/doc/security/fuzz
+  - https://pkg.go.dev/testing#F
+  - https://pkg.go.dev/errors#Is
 - Status: Active.
-- Review notes: `B.Loop` excludes one-time setup before the loop, but this benchmark also has per-iteration re-population. Reason explicitly about which operations are timed rather than assuming the loop alone handles every boundary.
+- Review notes: The model is the oracle, not a second implementation of locking. Keep the operation encoding simple and the comparison local to each step so a failure points to the operation that diverged.

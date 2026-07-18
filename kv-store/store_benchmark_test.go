@@ -65,3 +65,41 @@ func BenchmarkSnapshot(b *testing.B) {
 		})
 	}
 }
+
+func BenchmarkClear(b *testing.B) {
+	cases := []struct {
+		name string
+		size int
+	}{
+		{"10", 10},
+		{"1000", 1000},
+		{"100000", 100000},
+	}
+
+	for _, tc := range cases {
+		b.Run(tc.name, func(b *testing.B) {
+			b.ReportAllocs()
+
+			db := kvstore.New[int, int]()
+
+			populate := func() {
+				for key := range tc.size {
+					db.Set(key, key)
+				}
+			}
+
+			// B.Loop excludes setup before its first invocation.
+			populate()
+
+			for b.Loop() {
+				db.Clear()
+
+				// Prepare a fully populated store for the next iteration
+				// without measuring the setup time or allocations.
+				b.StopTimer()
+				populate()
+				b.StartTimer()
+			}
+		})
+	}
+}
