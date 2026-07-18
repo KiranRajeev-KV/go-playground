@@ -12,6 +12,7 @@ func FuzzStoreSequentialOperations(f *testing.F) {
 		getOperation
 		deleteOperation
 		clearOperation
+		loadAndDeleteOperation
 	)
 
 	// Set(1, 10), Get(1), Delete(1), Get(1 missing).
@@ -31,17 +32,24 @@ func FuzzStoreSequentialOperations(f *testing.F) {
 		deleteOperation, 3, 0,
 	})
 
+	// LoadAndDelete a present key, then LoadAndDelete it again while absent.
+	f.Add([]byte{
+		setOperation, 7, 70,
+		loadAndDeleteOperation, 7, 0,
+		loadAndDeleteOperation, 7, 0,
+	})
+
 	f.Fuzz(func(t *testing.T, data []byte) {
 		const (
 			bytesPerOperation = 3
 			maxOperations     = 64
-			operationCount    = 4
+			operationCount    = 5
 		)
 
 		db := kvstore.New[byte, byte]()
 		model := make(map[byte]byte)
 
-		operationTotal := min(len(data)/bytesPerOperation, maxOperations)
+		operationTotal := min(len(data) / bytesPerOperation, maxOperations)
 
 		checkState := func(step int, operation string) {
 			t.Helper()
@@ -56,8 +64,6 @@ func FuzzStoreSequentialOperations(f *testing.F) {
 				)
 			}
 
-			// The key type is byte, so checking the entire key space
-			// is bounded to exactly 256 Get calls.
 			for candidate := 0; candidate <= 255; candidate++ {
 				key := byte(candidate)
 
@@ -186,6 +192,44 @@ func FuzzStoreSequentialOperations(f *testing.F) {
 				clear(model)
 
 				checkState(step, "Clear")
+
+			case loadAndDeleteOperation:
+				want, exists := model[key]
+
+				got, loaded := db.LoadAndDelete(key)
+
+				if loaded != exists {
+					t.Fatalf(
+						"step %d: LoadAndDelete(%d) loaded = %v, want %v",
+						step,
+						key,
+						loaded,
+						exists,
+					)
+				}
+
+				if exists {
+					if got != want {
+						t.Fatalf(
+							"step %d: LoadAndDelete(%d) value = %d, want %d",
+							step,
+							key,
+							got,
+							want,
+						)
+					}
+
+					delete(model, key)
+				} else if got != 0 {
+					t.Fatalf(
+						"step %d: LoadAndDelete(%d) value = %d, want zero value 0",
+						step,
+						key,
+						got,
+					)
+				}
+
+				checkState(step, "LoadAndDelete")
 			}
 		}
 	})
