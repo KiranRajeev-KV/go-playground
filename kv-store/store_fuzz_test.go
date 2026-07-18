@@ -14,6 +14,7 @@ func FuzzStoreSequentialOperations(f *testing.F) {
 		clearOperation
 		loadAndDeleteOperation
 		swapOperation
+		loadOrStoreOperation
 	)
 
 	// Set(1, 10), Get(1), Delete(1), Get(1 missing).
@@ -33,30 +34,39 @@ func FuzzStoreSequentialOperations(f *testing.F) {
 		deleteOperation, 3, 0,
 	})
 
-	// LoadAndDelete a present key, then LoadAndDelete it again while absent.
+	// LoadAndDelete a present key, then the same absent key.
 	f.Add([]byte{
 		setOperation, 7, 70,
 		loadAndDeleteOperation, 7, 0,
 		loadAndDeleteOperation, 7, 0,
 	})
 
-	// Swap a missing key, then Swap the now-existing key.
+	// Swap a missing key, then the now-existing key.
 	f.Add([]byte{
 		swapOperation, 8, 80,
 		swapOperation, 8, 81,
+	})
+
+	// LoadOrStore a missing key, then the now-existing key.
+	f.Add([]byte{
+		loadOrStoreOperation, 9, 90,
+		loadOrStoreOperation, 9, 91,
 	})
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		const (
 			bytesPerOperation = 3
 			maxOperations     = 64
-			operationCount    = 6
+			operationCount    = 7
 		)
 
 		db := kvstore.New[byte, byte]()
 		model := make(map[byte]byte)
 
-		operationTotal := min(len(data)/bytesPerOperation, maxOperations)
+		operationTotal := min(
+			len(data)/bytesPerOperation,
+			maxOperations,
+		)
 
 		checkState := func(step int, operation string) {
 			t.Helper()
@@ -71,6 +81,7 @@ func FuzzStoreSequentialOperations(f *testing.F) {
 				)
 			}
 
+			// Check the complete bounded byte keyspace.
 			for candidate := 0; candidate <= 255; candidate++ {
 				key := byte(candidate)
 
@@ -278,6 +289,50 @@ func FuzzStoreSequentialOperations(f *testing.F) {
 				model[key] = value
 
 				checkState(step, "Swap")
+
+			case loadOrStoreOperation:
+				want, exists := model[key]
+
+				got, loaded := db.LoadOrStore(key, value)
+
+				if loaded != exists {
+					t.Fatalf(
+						"step %d: LoadOrStore(%d, %d) loaded = %v, want %v",
+						step,
+						key,
+						value,
+						loaded,
+						exists,
+					)
+				}
+
+				if exists {
+					if got != want {
+						t.Fatalf(
+							"step %d: LoadOrStore(%d, %d) value = %d, want existing value %d",
+							step,
+							key,
+							value,
+							got,
+							want,
+						)
+					}
+				} else {
+					if got != value {
+						t.Fatalf(
+							"step %d: LoadOrStore(%d, %d) value = %d, want supplied value %d",
+							step,
+							key,
+							value,
+							got,
+							value,
+						)
+					}
+
+					model[key] = value
+				}
+
+				checkState(step, "LoadOrStore")
 			}
 		}
 	})

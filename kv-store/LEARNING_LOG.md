@@ -246,18 +246,34 @@ Historically completed and present in the current implementation: one `sync.RWMu
 - Associated commit message recommendation: `test(store): fuzz swap`
 - Completed: 2026-07-18
 
-## Active Task
-
 ### Task 32: Extend the fuzz model with LoadOrStore
 
 - Objective: Keep the model-based fuzz oracle aligned with the atomic first-writer-wins operation.
-- Why this is next: `LoadOrStore` is a public atomic mutation primitive but is not yet represented in generated operation sequences.
-- Required behavior: Add one `LoadOrStore` operation encoding. Compare returned value and `loaded` with the map model; only insert the generated value into the model when the key was absent; then run the full state check. Add a seed covering missing and existing paths.
-- Constraints: Do not change production code, prior encodings, input bounds, or sequential execution. Evaluate model presence before the call; the returned boolean reports whether an existing value was loaded.
+- Why it was selected: `LoadOrStore` needed sequence coverage as a public atomic mutation primitive.
+- Required behavior: The target compares value and loaded boolean to model state, inserts only when absent, and checks full state.
+- Constraints: Production code, prior encodings, bounds, and sequential execution remain unchanged; model presence is evaluated before the call.
+- Acceptance criteria: Operation and seed cover missing/existing paths; every step checks result and state; baseline and five-second fuzz checks pass.
+- Learner implementation summary: Added the operation encoding, seed, model comparison, conditional insertion, and full-state check.
+- Codex-maintained changes: `LEARNING_LOG.md` records the completed task; no other maintenance was required.
+- Verification commands: `git diff --check`; `gofmt -l .`; `go test ./...`; `go test -race ./...`; `go vet ./...`; `go test -run='^$' -fuzz=FuzzStoreSequentialOperations -fuzztime=5s`.
+- Verification results: On 2026-07-18, diff and formatting checks passed. Tests, race detection, and vet passed. The fuzz target ran 916,619 inputs in five seconds without failures.
+- Important lesson: First-writer-wins operations require asymmetric model updates: only a missing key receives the supplied value.
+- References: https://go.dev/doc/security/fuzz ; https://pkg.go.dev/sync#Map.LoadOrStore
+- Associated commit message recommendation: `test(store): fuzz load or store`
+- Completed: 2026-07-18
+
+## Active Task
+
+### Task 33: Extend the fuzz model with Update
+
+- Objective: Exercise callback-based mutation in generated sequential operation sequences.
+- Why this is next: `Update` is the remaining public state-transition operation not represented in the model fuzzer.
+- Required behavior: Add an `Update` operation encoding that uses the generated value as the callback result. For an existing model key, `Update` must return nil and replace the model value; for an absent key, it must return `ErrValueNotFound` identified with `errors.Is` and leave the model unchanged. Add a seed covering both paths.
+- Constraints: The callback must be pure, immediate, and must not access the store. Do not change production code, existing encodings, bounds, or sequential execution.
 - Acceptance criteria:
-  - The fuzz operation set includes `LoadOrStore`.
+  - The fuzz operation set includes `Update`.
   - A seed covers missing and existing paths.
-  - Every fuzzed call checks returned value, loaded boolean, and updated model state.
+  - Every fuzzed update checks result error and updated or unchanged model state.
   - Existing fuzz operations and checks remain intact.
   - Ordinary tests, race detection, vet, and a five-second fuzz run pass.
 - Verification plan:
@@ -269,7 +285,7 @@ Historically completed and present in the current implementation: one `sync.RWMu
   - `go test -run='^$' -fuzz=FuzzStoreSequentialOperations -fuzztime=5s`
 - References:
   - https://go.dev/doc/security/fuzz
-  - https://pkg.go.dev/sync#Map.LoadOrStore
+  - https://pkg.go.dev/sync#RWMutex.Lock
   - https://pkg.go.dev/testing#F
 - Status: Active.
-- Review notes: For a present model key, do not overwrite the model with the generated value. `loaded == true` means the existing modeled value must be returned and retained.
+- Review notes: Test the callback contract through the state result, not by making the callback re-enter the store. A missing-key update must not invoke a callback with an invented value.
