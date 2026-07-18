@@ -202,3 +202,33 @@ func BenchmarkDelete(b *testing.B) {
 		next++
 	}
 }
+
+func BenchmarkSequentialLen(b *testing.B) {
+	b.ReportAllocs()
+
+	db := kvstore.New[int, int]()
+	for key := range 1000 {
+		db.Set(key, key)
+	}
+
+	for b.Loop() {
+		db.Len()
+	}
+}
+
+func BenchmarkParallelLen(b *testing.B) {
+	b.ReportAllocs()
+
+	db := kvstore.New[int, int]()
+	for key := range 1000 {
+		db.Set(key, key)
+	}
+
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			db.Len()
+		}
+	})
+}

@@ -321,12 +321,36 @@ Historically completed and present in the current implementation: one `sync.RWMu
 - Associated commit message recommendation: `bench(store): benchmark atomic mutations`
 - Completed: 2026-07-18
 
-## Active Task
-
 ### Task 36: Benchmark Len under sequential and parallel reads
 
 - Objective: Measure the store's point-in-time size query in single-threaded and parallel read scenarios.
+- Why it was selected: `Len` is an established concurrent read operation whose sequential and contended costs should be measured independently.
 - Required behavior: Add sequential and parallel Len benchmarks against a pre-populated store, with setup excluded and allocations reported.
-- Acceptance criteria: Both benchmarks measure only Len; parallel setup remains outside RunParallel; fixed-duration and repeated suites pass.
-- Verification plan: `git diff --check`; `gofmt -l .`; `go test ./...`; `go test -race ./...`; `go vet ./...`; `go test -run='^$' -bench='Benchmark.*Len' -benchmem -benchtime=1s`; `go test -run='^$' -bench=. -benchmem -count=5`.
+- Constraints: Each timed iteration performs only `Len`; the parallel benchmark must leave setup outside `RunParallel` and must not manipulate benchmark timing from workers.
+- Acceptance criteria: Both benchmarks measure only Len; parallel setup remains outside `RunParallel`; allocation metrics are reported; fixed-duration and repeated suites pass.
+- Learner implementation summary: Added `BenchmarkSequentialLen` and `BenchmarkParallelLen`, each against 1,000 seeded entries; the parallel benchmark resets timing immediately before `RunParallel`.
+- Codex-maintained changes: `LEARNING_LOG.md` records this completed task; `go fmt ./...` made no formatting changes.
+- Verification commands: `git diff --check`; `gofmt -l .`; `go test ./...`; `go test -race ./...`; `go vet ./...`; `go test -run='^$' -bench='Benchmark.*Len' -benchmem -benchtime=1s`; `go test -run='^$' -bench=. -benchmem -count=5`.
+- Verification results: On 2026-07-18, diff and formatting checks passed. Tests and race tests passed, and vet completed with no findings. The one-second Len run completed with `BenchmarkSequentialLen` at 11.84 ns/op and `BenchmarkParallelLen` at 34.99 ns/op; both reported 0 B/op and 0 allocs/op. The five-run full benchmark suite completed successfully.
+- Important lesson: Parallel benchmark setup requires an explicit timing boundary before `RunParallel`; `RunParallel` workers should perform only the operation being measured.
+- References: https://pkg.go.dev/testing#B.Loop ; https://pkg.go.dev/testing#B.RunParallel ; https://pkg.go.dev/testing#B.ReportAllocs
+- Associated commit message recommendation: `bench(store): benchmark len reads`
+- Completed: 2026-07-18
+
+## Active Task
+
+### Task 37: Benchmark Snapshot under parallel readers
+
+- Objective: Measure snapshot behavior when multiple goroutines concurrently take independent snapshots of the same stable store.
+- Why this is next: `Snapshot` already has sequential size benchmarks; a focused parallel benchmark will reveal the concurrent-read and allocation profile without changing the API.
+- Required behavior: Add one parallel `Snapshot` benchmark using a shared, pre-populated store of 1,000 entries. Every timed worker iteration must take exactly one snapshot, and setup must be excluded from timing.
+- Constraints: Do not mutate the store in the benchmark, do not reuse or share returned snapshot maps, and do not control timers inside `RunParallel` workers. Report allocations.
+- Acceptance criteria:
+  - The benchmark uses `RunParallel` with setup completed before timing starts.
+  - Each measured iteration calls only `Snapshot` on the shared store.
+  - Allocation metrics are reported.
+  - Existing benchmarks remain unchanged.
+  - Baseline, one-second targeted, and repeated full benchmark suites pass.
+- Verification plan: `git diff --check`; `gofmt -l .`; `go test ./...`; `go test -race ./...`; `go vet ./...`; `go test -run='^$' -bench='^BenchmarkParallelSnapshot$' -benchmem -benchtime=1s`; `go test -run='^$' -bench=. -benchmem -count=5`.
+- References: https://pkg.go.dev/testing#B.RunParallel ; https://pkg.go.dev/testing#B.ReportAllocs ; https://go.dev/ref/mem
 - Status: Active.
