@@ -961,3 +961,226 @@ func TestLenConcurrentWithMutation(t *testing.T) {
 		t.Errorf("Len() after concurrent mutation = %d, want 0", got)
 	}
 }
+
+func TestClearPopulatedStore(t *testing.T) {
+	db := kvstore.New[int, int]()
+
+	entries := map[int]int{
+		1: 10,
+		2: 20,
+		3: 30,
+	}
+
+	for key, value := range entries {
+		db.Set(key, value)
+	}
+
+	db.Clear()
+
+	if got := db.Len(); got != 0 {
+		t.Fatalf("Len() after Clear() = %d, want 0", got)
+	}
+
+	for key := range entries {
+		_, err := db.Get(key)
+		if !errors.Is(err, kvstore.ErrValueNotFound) {
+			t.Errorf(
+				"Get(%d) after Clear() error = %v, want %v",
+				key,
+				err,
+				kvstore.ErrValueNotFound,
+			)
+		}
+	}
+}
+
+func TestClearEmptyStore(t *testing.T) {
+	db := kvstore.New[int, int]()
+
+	db.Clear()
+
+	if got := db.Len(); got != 0 {
+		t.Fatalf("Len() after clearing empty store = %d, want 0", got)
+	}
+
+	db.Set(1, 10)
+
+	got, err := db.Get(1)
+	if err != nil {
+		t.Fatalf("Get(1) after clearing empty store returned an error: %v", err)
+	}
+
+	if got != 10 {
+		t.Errorf("Get(1) = %d, want 10", got)
+	}
+}
+
+func TestClearZeroValueStore(t *testing.T) {
+	var db kvstore.Store[int, int]
+
+	db.Clear()
+
+	if got := db.Len(); got != 0 {
+		t.Fatalf("Len() after clearing zero-value store = %d, want 0", got)
+	}
+
+	db.Set(1, 10)
+
+	got, err := db.Get(1)
+	if err != nil {
+		t.Fatalf("Get(1) after clearing zero-value store returned an error: %v", err)
+	}
+
+	if got != 10 {
+		t.Errorf("Get(1) = %d, want 10", got)
+	}
+}
+
+func TestClearConcurrentWithReaders(t *testing.T) {
+	db := kvstore.New[int, int]()
+
+	const (
+		numKeys    = 64
+		readers    = 8
+		clearers   = 4
+		iterations = 500
+	)
+
+	for key := range numKeys {
+		db.Set(key, key)
+	}
+
+	type failure struct {
+		operation string
+		length    int
+		key       int
+		value     int
+		present   bool
+	}
+
+	start := make(chan struct{})
+	failures := make(chan failure, readers)
+
+	var ready sync.WaitGroup
+	var wg sync.WaitGroup
+
+	ready.Add(readers + clearers)
+
+	for range readers {
+		wg.Go(func() {
+			ready.Done()
+			<-start
+
+			for range iterations {
+				length := db.Len()
+				if length != 0 && length != numKeys {
+					failures <- failure{
+						operation: "Len",
+						length:    length,
+					}
+					return
+				}
+
+				snapshot := db.Snapshot()
+
+				switch len(snapshot) {
+				case 0:
+					continue
+
+				case numKeys:
+					for key := range numKeys {
+						value, ok := snapshot[key]
+						if !ok || value != key {
+							failures <- failure{
+								operation: "Snapshot entry",
+								length:    len(snapshot),
+								key:       key,
+								value:     value,
+								present:   ok,
+							}
+							return
+						}
+					}
+
+				default:
+					failures <- failure{
+						operation: "Snapshot length",
+						length:    len(snapshot),
+					}
+					return
+				}
+			}
+		})
+	}
+
+	for range clearers {
+		wg.Go(func() {
+			ready.Done()
+			<-start
+
+			for range iterations {
+				db.Clear()
+			}
+		})
+	}
+
+	ready.Wait()
+	close(start)
+
+	wg.Wait()
+	close(failures)
+
+	for failure := range failures {
+		switch failure.operation {
+		case "Len":
+			t.Errorf(
+				"Len() during concurrent Clear() = %d, want 0 or %d",
+				failure.length,
+				numKeys,
+			)
+
+		case "Snapshot length":
+			t.Errorf(
+				"len(Snapshot()) during concurrent Clear() = %d, want 0 or %d",
+				failure.length,
+				numKeys,
+			)
+
+		case "Snapshot entry":
+			t.Errorf(
+				"Snapshot()[%d] during concurrent Clear() = %d, present %v; want %d, true",
+				failure.key,
+				failure.value,
+				failure.present,
+				failure.key,
+			)
+		}
+	}
+
+	if got := db.Len(); got != 0 {
+		t.Fatalf("Len() after concurrent Clear() calls = %d, want 0", got)
+	}
+
+	for key := range numKeys {
+		_, err := db.Get(key)
+		if !errors.Is(err, kvstore.ErrValueNotFound) {
+			t.Errorf(
+				"Get(%d) after concurrent Clear() error = %v, want %v",
+				key,
+				err,
+				kvstore.ErrValueNotFound,
+			)
+		}
+	}
+
+	db.Set(numKeys, numKeys)
+
+	got, err := db.Get(numKeys)
+	if err != nil {
+		t.Fatalf("Get(%d) after concurrent Clear() returned an error: %v", numKeys, err)
+	}
+
+	if got != numKeys {
+		t.Errorf("Get(%d) = %d, want %d", numKeys, got, numKeys)
+	}
+}

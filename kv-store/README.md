@@ -37,6 +37,7 @@ store.Set("visits", 1)
 - `Update` atomically replaces an existing value through a callback. A nil callback returns `ErrNilUpdateFunc`; callbacks run under the store's exclusive lock and must not re-enter that store or wait for work that needs it.
 - `Snapshot` returns a new map containing a shallow copy of the current entries.
 - `Len` returns a concurrency-safe, point-in-time entry count.
+- `Clear` atomically removes every entry.
 
 `Store` synchronizes access to its internal map. It does not deep-copy values or synchronize mutable data referenced by values; callers own that synchronization. Do not copy a `Store` after first use.
 

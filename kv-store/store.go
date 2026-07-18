@@ -145,3 +145,12 @@ func (s *Store[K, V]) Len() int {
 
 	return len(s.store)
 }
+
+// Clear removes every entry from the Store.
+// Clear is atomic with respect to other Store operations.
+func (s *Store[K, V]) Clear() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	clear(s.store)
+}

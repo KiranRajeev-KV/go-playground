@@ -134,29 +134,46 @@ Historically completed and present in the current implementation: one `sync.RWMu
 - Associated commit message recommendation: `feat(store): add atomic len`
 - Completed: 2026-07-18
 
-## Active Task
-
 ### Task 25: Add an atomic Clear operation
 
 - Objective: Add a bounded bulk-mutation operation while preserving the store's locking and zero-value contracts.
-- Why this is next: With `Len` available, clearing all entries is a useful complementary operation that teaches atomic bulk mutation without adding data-structure complexity.
-- Required behavior: Add an exported `Clear` method that removes every current entry. It must succeed for zero-value and empty stores, return no error, and be atomic with respect to other store operations. Codex will add related documentation after the implementation is verified.
-- Constraints: Use the existing exclusive-lock strategy. Do not replace the map solely to clear it, add counters or goroutines, alter value-ownership semantics, or introduce an error return.
+- Why it was selected: With `Len` available, clearing all entries is a useful complementary operation that teaches atomic bulk mutation without adding data-structure complexity.
+- Required behavior: `Clear` removes every current entry, succeeds for zero-value and empty stores without error, and is atomic with respect to other store operations.
+- Constraints: It uses the existing exclusive-lock strategy, clears in place, adds no counters or goroutines, and preserves ownership semantics.
+- Acceptance criteria: Populated stores become empty and former keys are missing; empty and zero-value stores remain usable; external tests exercise concurrent readers; existing contracts remain unchanged; and baseline checks pass.
+- Learner implementation summary: Added the exclusive-lock `Clear` method and external tests for populated, empty, zero-value, and concurrent-reader behavior.
+- Codex-maintained changes: `store.go` gained the comment-only atomic `Clear` contract; `README.md` lists `Clear`; `go fmt ./...` made no reported formatting changes.
+- Verification commands: `git diff --check`; `gofmt -l .`; `go test ./...`; `go test -race ./...`; `go vet ./...`.
+- Verification results: On 2026-07-18, diff and formatting checks passed. Regular tests and race tests passed, and vet completed successfully with no reported issues. The concurrent test observes only complete pre-clear or post-clear states from `Len` and `Snapshot`.
+- Important lesson: A bulk operation is atomic when callers cannot observe a partial internal transition, not when it prevents later operations from changing the store.
+- References: https://pkg.go.dev/builtin#clear ; https://pkg.go.dev/sync#RWMutex.Lock ; https://go.dev/ref/mem
+- Associated commit message recommendation: `feat(store): add atomic clear`
+- Completed: 2026-07-18
+
+## Active Task
+
+### Task 26: Benchmark Clear with excluded re-population setup
+
+- Objective: Measure the cost of clearing populated stores without measuring the work needed to re-populate them.
+- Why this is next: `Clear` is now a public bulk operation. Its benchmark must handle the fact that every measured clear leaves the store empty, making timer boundaries more subtle than the existing read benchmarks.
+- Required behavior: Add sequential `Clear` benchmark subtests for populated sizes 10, 1000, and 100000. Each measured iteration clears one fully populated store of the selected size. Re-population and any allocation required to prepare the next iteration must be excluded from the measured interval. Report allocations.
+- Constraints: Do not modify store behavior. Keep setup deterministic, do not use sleeps, and do not turn the benchmark into a measurement of `Set` or map allocation. The cleared operation must remain observable to the compiler through its mutation; do not add artificial result handling.
 - Acceptance criteria:
-  - Clearing a populated store makes `Len` zero and every formerly present key return `ErrValueNotFound`.
-  - Clearing an empty or zero-value store is safe and leaves it usable for later `Set` or `LoadOrStore`.
-  - An external-package test exercises `Clear` concurrently with readers or writers under the race detector without asserting a timing-dependent in-flight state.
-  - Existing operations retain their contracts.
-  - Formatting, tests, race detection, and vet remain clean.
+  - Subtests cover all three specified sizes.
+  - Each timed operation clears a populated store exactly once.
+  - Re-population/setup is outside measured time for every iteration.
+  - Allocation metrics are reported and benchmark output completes.
+  - Existing benchmarks and baseline checks remain clean.
 - Verification plan:
   - `git diff --check`
   - `gofmt -l .`
   - `go test ./...`
   - `go test -race ./...`
   - `go vet ./...`
+  - `go test -run='^$' -bench=. -benchmem -count=5`
 - References:
-  - https://pkg.go.dev/builtin#clear
-  - https://pkg.go.dev/sync#RWMutex.Lock
-  - https://go.dev/ref/mem
+  - https://pkg.go.dev/testing#B.StopTimer
+  - https://pkg.go.dev/testing#B.StartTimer
+  - https://pkg.go.dev/testing#B.Loop
 - Status: Active.
-- Review notes: Treat `Clear` as one atomic operation. It does not reserve the store for a later sequence of caller operations, and concurrent tests must not assume whether a particular read happens before or after the clear.
+- Review notes: `B.Loop` excludes one-time setup before the loop, but this benchmark also has per-iteration re-population. Reason explicitly about which operations are timed rather than assuming the loop alone handles every boundary.
