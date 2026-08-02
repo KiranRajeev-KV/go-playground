@@ -7,16 +7,10 @@ import (
 	"os"
 )
 
-type Body struct {
-	Type      string `json:"type"`
-	MsgID     int    `json:"msg_id,omitempty"`
-	InReplyTo int    `json:"in_reply_to,omitempty"`
-}
-
 type Message struct {
-	Src  string `json:"src"`
-	Dest string `json:"dest"`
-	Body Body   `json:"body"`
+	Src  string         `json:"src"`
+	Dest string         `json:"dest"`
+	Body map[string]any `json:"body"`
 }
 
 func main() {
@@ -30,8 +24,9 @@ func main() {
 			continue
 		}
 
-		if msg.Body.Type == "" {
-			fmt.Fprintln(os.Stderr, `invalid message: body.type is required`)
+		bodyType, ok := msg.Body["type"].(string)
+		if !ok || bodyType == "" {
+			fmt.Fprintln(os.Stderr, `invalid message: body.type must be a non-empty string`)
 			continue
 		}
 
@@ -39,7 +34,7 @@ func main() {
 			"PARSED: %s|%s|%s\n",
 			msg.Src,
 			msg.Dest,
-			msg.Body.Type,
+			bodyType,
 		)
 	}
 
