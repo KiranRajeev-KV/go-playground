@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -24,10 +25,13 @@ var hopByHopHeaders = []string{
 	"Trailer",
 	"Transfer-Encoding",
 	"Upgrade",
+	"HTTP2-Settings",
 }
 
+const proxyName = "reverse-proxy"
+
 func removeHopByHopHeaders(h http.Header) {
-	// RFC 9110: headers named by Connection are hop-by-hop too.
+	// RFC 9110: fields named by Connection are hop-by-hop as well.
 	for _, connectionValue := range h.Values("Connection") {
 		for _, headerName := range strings.Split(connectionValue, ",") {
 			headerName = strings.TrimSpace(headerName)
@@ -43,7 +47,7 @@ func removeHopByHopHeaders(h http.Header) {
 }
 
 func setForwardedHeaders(outReq, inReq *http.Request) {
-	// Do not trust values supplied directly by the client.
+	// Do not trust forwarding metadata supplied directly by the client.
 	outReq.Header.Del("Forwarded")
 	outReq.Header.Del("X-Forwarded-For")
 	outReq.Header.Del("X-Forwarded-Host")
@@ -63,6 +67,13 @@ func setForwardedHeaders(outReq, inReq *http.Request) {
 	}
 }
 
+func appendVia(h http.Header, protoMajor, protoMinor int) {
+	receivedProtocol := fmt.Sprintf("%d.%d", protoMajor, protoMinor)
+	entry := receivedProtocol + " " + proxyName
+
+	h.Add("Via", entry)
+}
+
 func copyHeaders(dst, src http.Header) {
 	for key, values := range src {
 		for _, value := range values {
@@ -73,10 +84,11 @@ func copyHeaders(dst, src http.Header) {
 
 func handleReq(w http.ResponseWriter, r *http.Request) {
 	log.Printf(
-		"method=%s path=%s host=%s",
+		"method=%s path=%s host=%s proto=%s",
 		r.Method,
 		r.URL.Path,
 		r.Host,
+		r.Proto,
 	)
 
 	upstreamURL := "http://localhost:9000" + r.URL.RequestURI()
@@ -95,8 +107,17 @@ func handleReq(w http.ResponseWriter, r *http.Request) {
 
 	upstreamReq.Header = r.Header.Clone()
 
+	// Preserve known inbound body length. Content-Length is represented
+	// structurally by Request.ContentLength, not by the generic Header map.
+	upstreamReq.ContentLength = r.ContentLength
+
 	removeHopByHopHeaders(upstreamReq.Header)
 	setForwardedHeaders(upstreamReq, r)
+	appendVia(
+		upstreamReq.Header,
+		r.ProtoMajor,
+		r.ProtoMinor,
+	)
 
 	resp, err := client.Do(upstreamReq)
 	if err != nil {
@@ -107,7 +128,16 @@ func handleReq(w http.ResponseWriter, r *http.Request) {
 	defer resp.Body.Close()
 
 	responseHeaders := resp.Header.Clone()
+
 	removeHopByHopHeaders(responseHeaders)
+
+	// This proxy is forwarding the upstream response, so append its
+	// intermediary entry to the response Via chain as well.
+	appendVia(
+		responseHeaders,
+		resp.ProtoMajor,
+		resp.ProtoMinor,
+	)
 
 	copyHeaders(w.Header(), responseHeaders)
 
