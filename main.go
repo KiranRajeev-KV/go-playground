@@ -8,7 +8,11 @@ import (
 	"strings"
 )
 
-var client = &http.Client{}
+var client = &http.Client{
+	CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	},
+}
 
 var hopByHopHeaders = []string{
 	"Connection",
