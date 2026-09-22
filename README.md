@@ -15,6 +15,7 @@ Each subdirectory is an independent project with its own `go.mod`.
 - [kv-store](./kv-store/README.md) - In-memory, generic key-value store with concurrency-safe operations
 - [lamport-vector-clocks](./lamport-vector-clocks/README.md) - Lamport and Vector clock implementations
 - [rate-limiters](./rate-limiters/) - Rate limiting algorithms and HTTP server
+- [reverse-proxy](./reverse-proxy/README.md) - HTTP reverse proxy built from scratch
 
 ## Adding New Projects
 
