@@ -8,54 +8,91 @@ import (
 )
 
 type hash struct {
-	seed maphash.Seed
+	seed1 maphash.Seed
+	seed2 maphash.Seed
 }
 
-func (h *hash) hash(s string) uint64 {
-	v := maphash.String(h.seed, s)
-	return v
+func (h *hash) hash(s string) (uint64, uint64) {
+	h1 := maphash.String(h.seed1, s)
+	h2 := maphash.String(h.seed2, s)
+	return h1, h2
 }
 
 type storage struct {
 	m uint64
+	k int
 	a []uint64
 	h hash
 }
 
-func New(m uint64) (*storage, error) {
+func New(m uint64, k int) (*storage, error) {
 	if m == 0 {
 		return nil, errors.New("m cannot be zero")
 	}
+	if k < 0 {
+		return nil, errors.New("k cannot be less than zero")
+	}
 	return &storage{
 		m: m,
+		k: k,
 		a: make([]uint64, (m+63)/64),
 		h: hash{
-			seed: maphash.MakeSeed(),
+			seed1: maphash.MakeSeed(),
+			seed2: maphash.MakeSeed(),
 		},
 	}, nil
 }
 
 func (s *storage) set(i string) {
-	h := s.h.hash(i)
-	index := h % s.m
+	h1, h2 := s.h.hash(i)
+	pos := h1 % s.m
+	step := h2 % s.m
 
-	mask := uint64(1) << (index % 64)
-	s.a[index/64] |= mask
+	positions := make([]uint64, s.k)
+
+	for j := range positions {
+		positions[j] = pos
+		pos = (pos + step) % s.m
+	}
+	fmt.Printf("inside set: %v\n", positions)
+
+	for _, bitIndex := range positions {
+		wordIndex := bitIndex / 64
+		mask := uint64(1) << (bitIndex % 64)
+		s.a[wordIndex] |= mask
+	}
 	// fmt.Printf("%v\n", s.a[i/64])
 }
 
 func (s *storage) has(i string) bool {
-	h := s.h.hash(i)
-	index := h % s.m
-	mask := uint64(1) << (index % 64)
-	return s.a[index/64]&mask != 0
+	h1, h2 := s.h.hash(i)
+	pos := h1 % s.m
+	step := h2 % s.m
+
+	positions := make([]uint64, s.k)
+
+	for j := range positions {
+		positions[j] = pos
+		pos = (pos + step) % s.m
+	}
+
+	fmt.Printf("inside has: %v\n", positions)
+
+	for _, bitIndex := range positions {
+		wordIndex := bitIndex / 64
+		mask := uint64(1) << (bitIndex % 64)
+		if s.a[wordIndex]&mask == 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func main() {
 	// fmt.Println("Hello, World!")
 	// fmt.Println(float64(47950/64))
 	// fmt.Println(math.Ceil(float64(47950 / 64)))
-	store, err := New(0)
+	store, err := New(130, 7)
 	if err != nil {
 		log.Fatalf("create storage: %v", err)
 	}
