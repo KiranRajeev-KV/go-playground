@@ -29,8 +29,8 @@ func New(m uint64, k int) (*storage, error) {
 	if m == 0 {
 		return nil, errors.New("m cannot be zero")
 	}
-	if k < 0 {
-		return nil, errors.New("k cannot be less than zero")
+	if k <= 0 {
+		return nil, errors.New("k cannot be less than or equal to zero")
 	}
 	return &storage{
 		m: m,
